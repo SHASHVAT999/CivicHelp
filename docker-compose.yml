@@ -1,0 +1,71 @@
+services:
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: civichelp-backend
+    restart: always
+    ports:
+      - "5001:5001"
+    environment:
+      PORT: 5001
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: civichelp
+      JWT_SECRET: ${JWT_SECRET}
+      CLIENT_URL: ${CLIENT_URL:-http://localhost,http://localhost:3000}
+      EMAIL_USER: ${EMAIL_USER}
+      EMAIL_PASS: ${EMAIL_PASS}
+    volumes:
+      - uploads-data:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - civichelp-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        REACT_APP_API_URL: /api
+        REACT_APP_SOCKET_URL: /
+    container_name: civichelp-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - civichelp-network
+
+  db:
+    image: mysql:8.0
+    container_name: civichelp-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: civichelp
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+    networks:
+      - civichelp-network
+
+networks:
+  civichelp-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  uploads-data:

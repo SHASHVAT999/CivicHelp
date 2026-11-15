@@ -1,0 +1,144 @@
+---
+- name: Deploy CivicHelp on AWS EC2
+  hosts: civichelp
+  become: yes
+
+  vars:
+    # Deployment directory on remote host
+    target_deploy_dir: "{{ deploy_dir | default(app_dir | default('/home/ubuntu/civichelp')) }}"
+
+    # Git repository settings (supplied via extra-vars: -e "git_repo_url=...")
+    target_repo_url: "{{ git_repo_url | default(repo_url | default('')) }}"
+    target_repo_branch: "{{ git_branch | default(branch | default('main')) }}"
+
+    # Application secrets: extra-vars (db_password/jwt_secret) take precedence, fallback to env vars (DB_PASSWORD/JWT_SECRET)
+    app_db_password: "{{ db_password | default(lookup('env', 'DB_PASSWORD') | default('', true), true) }}"
+    app_jwt_secret: "{{ jwt_secret | default(lookup('env', 'JWT_SECRET') | default('', true), true) }}"
+    app_email_user: "{{ email_user | default(lookup('env', 'EMAIL_USER') | default('', true), true) }}"
+    app_email_pass: "{{ email_pass | default(lookup('env', 'EMAIL_PASS') | default('', true), true) }}"
+
+    # Frontend / CORS allowed client URL (defaults to EC2 IP or host)
+    client_url: "{{ frontend_url | default('http://' ~ (ansible_host | default(ec2_ip | default('localhost')))) }}"
+
+  tasks:
+    - name: Validate that required parameters are provided
+      fail:
+        msg: "Missing required parameter 'git_repo_url'. Please pass -e 'git_repo_url=<your-repo-url>'"
+      when: target_repo_url is not defined or target_repo_url | length == 0
+
+    - name: Validate that database password is provided
+      fail:
+        msg: "Missing required secret 'db_password'. Please provide it via environment variable DB_PASSWORD or extra-vars -e 'db_password=...'"
+      when: app_db_password is not defined or app_db_password | length == 0
+
+    - name: Validate that JWT secret is provided
+      fail:
+        msg: "Missing required secret 'jwt_secret'. Please provide it via environment variable JWT_SECRET or extra-vars -e 'jwt_secret=...'"
+      when: app_jwt_secret is not defined or app_jwt_secret | length == 0
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Create 2GB swap file (prevents out-of-memory errors during container builds on small instances)
+      shell: |
+        if [ ! -f /swapfile ]; then
+          fallocate -l 2G /swapfile
+          chmod 600 /swapfile
+          mkswap /swapfile
+          swapon /swapfile
+          echo '/swapfile none swap sw 0 0' >> /etc/fstab
+        fi
+      register: swap_result
+      changed_when: "'swapon' in swap_result.stdout or 'fallocate' in swap_result.stdout"
+
+    - name: Install prerequisite packages
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+          - git
+        state: present
+
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: "deb https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+
+    - name: Install Docker and Docker Compose plugin
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Ensure standalone docker-compose alias/binary is available
+      get_url:
+        url: https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-linux-x86_64
+        dest: /usr/local/bin/docker-compose
+        mode: '0755'
+
+    - name: Ensure ubuntu user belongs to docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: yes
+
+    - name: Clone CivicHelp from Git repository
+      git:
+        repo: "{{ target_repo_url }}"
+        dest: "{{ target_deploy_dir }}"
+        version: "{{ target_repo_branch }}"
+        force: yes
+
+    - name: Create runtime .env file
+      copy:
+        dest: "{{ target_deploy_dir }}/.env"
+        content: |
+          # Database Configuration
+          DB_HOST=db
+          DB_PORT=3306
+          DB_USER=root
+          DB_PASSWORD={{ app_db_password }}
+          DB_NAME=civichelp
+
+          # Backend Configuration
+          PORT=5001
+          JWT_SECRET={{ app_jwt_secret }}
+          CLIENT_URL={{ client_url }},http://localhost
+
+          # Email Notification Configuration (Optional)
+          EMAIL_USER={{ app_email_user }}
+          EMAIL_PASS={{ app_email_pass }}
+        mode: '0600'
+      no_log: true
+
+    - name: Stop any running application containers
+      shell: cd {{ target_deploy_dir }} && docker compose down
+      ignore_errors: yes
+
+    - name: Build and start CivicHelp containers in detached mode
+      shell: cd {{ target_deploy_dir }} && docker compose up --build -d
+      async: 1200
+      poll: 30
+
+    - name: Wait for CivicHelp web application to become responsive on port 80
+      wait_for:
+        port: 80
+        host: "{{ ansible_host | default(ec2_ip | default('127.0.0.1')) }}"
+        timeout: 180
+
+    - name: Display deployment success message
+      debug:
+        msg: "CivicHelp deployment completed successfully! The platform is live on port 80."
