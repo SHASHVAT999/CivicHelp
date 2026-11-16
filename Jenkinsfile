@@ -76,11 +76,11 @@ pipeline {
             steps {
                 echo 'Running Terraform provisioning...'
                 dir('terraform') {
-                    sh '''
+                    sh """
                     terraform init
                     terraform apply -auto-approve -var="admin_cidr=${params.ADMIN_CIDR}"
                     terraform output -raw ec2_public_ip > ../ec2_ip.txt
-                    '''
+                    """
                 }
             }
         }
@@ -90,18 +90,23 @@ pipeline {
                 echo 'Waiting for EC2 instance to initialize...'
                 sleep 30
                 echo 'Executing Ansible playbook...'
-                sh '''
-                EC2_IP=$(cat ec2_ip.txt)
+                withCredentials([
+                    string(credentialsId: 'CIVICHELP_DB_PASSWORD', variable: 'DB_PASSWORD'),
+                    string(credentialsId: 'CIVICHELP_JWT_SECRET', variable: 'JWT_SECRET')
+                ]) {
+                    sh """
+                    EC2_IP=\$(cat ec2_ip.txt)
 
-                # Generate dynamic inventory
-                echo "[civichelp]" > ansible/inventory.ini
-                echo "${EC2_IP} ansible_user=ubuntu ansible_ssh_private_key_file=${params.SSH_PRIVATE_KEY_PATH} ansible_ssh_common_args='-o StrictHostKeyChecking=no'" >> ansible/inventory.ini
+                    # Generate dynamic inventory
+                    echo "[civichelp]" > ansible/inventory.ini
+                    echo "\${EC2_IP} ansible_user=ubuntu ansible_ssh_private_key_file=${params.SSH_PRIVATE_KEY_PATH} ansible_ssh_common_args='-o StrictHostKeyChecking=no'" >> ansible/inventory.ini
 
-                ansible-playbook -i ansible/inventory.ini ansible/deploy.yml \
-                    -e "ec2_ip=${EC2_IP}" \
-                    -e "git_repo_url=${params.GIT_REPO_URL}" \
-                    -e "git_branch=${params.GIT_BRANCH}"
-                '''
+                    ansible-playbook -i ansible/inventory.ini ansible/deploy.yml \\
+                        -e "ec2_ip=\${EC2_IP}" \\
+                        -e "git_repo_url=${params.GIT_REPO_URL}" \\
+                        -e "git_branch=${params.GIT_BRANCH}"
+                    """
+                }
             }
         }
 

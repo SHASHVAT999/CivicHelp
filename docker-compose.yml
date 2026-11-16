@@ -7,7 +7,7 @@ services:
     container_name: civichelp-backend
     restart: always
     ports:
-      - "5001:5001"
+      - "127.0.0.1:5001:5001"
     environment:
       PORT: 5001
       DB_HOST: db
@@ -57,7 +57,9 @@ services:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
       timeout: 20s
+      start_period: 60s
       retries: 10
     networks:
       - civichelp-network
