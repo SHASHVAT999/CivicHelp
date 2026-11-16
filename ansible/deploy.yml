@@ -129,6 +129,8 @@
           # Email Notification Configuration (Optional)
           EMAIL_USER={{ app_email_user }}
           EMAIL_PASS={{ app_email_pass }}
+        owner: ubuntu
+        group: ubuntu
         mode: '0600'
       no_log: true
 

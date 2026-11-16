@@ -204,10 +204,15 @@ The EC2 instance clones the app from GitHub, so **push your changes first**.
 cp /mnt/d/AWSConfig/civichelp-key ~/.ssh/civichelp-key && chmod 600 ~/.ssh/civichelp-key
 cd /mnt/d/CivicHelp
 export DB_PASSWORD='...' JWT_SECRET='...'     # secrets via environment, never on the command line
-ansible-playbook -i "<EC2_IP>," -u ubuntu --private-key ~/.ssh/civichelp-key ansible/deploy.yml \
+
+# The playbook targets the inventory group "civichelp", so an inline "IP," inventory matches nothing.
+printf '[civichelp]\n<EC2_IP> ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/civichelp-key\n' > /tmp/civichelp-inventory.ini
+ansible-playbook -i /tmp/civichelp-inventory.ini ansible/deploy.yml \
   -e "ec2_ip=<EC2_IP>" \
   -e "git_repo_url=https://github.com/SHASHVAT999/CivicHelp.git" -e "git_branch=main"
 ```
+
+Use the **same** `DB_PASSWORD` for every redeploy: MySQL fixes its root password when the data volume is first created, so changing it later makes the backend unable to connect.
 
 The playbook adds 2 GB of swap (the React build needs it on a 1 GB t3.micro), installs Docker from Docker's signed apt repository, clones the repo, writes `.env` with mode `0600` (`no_log`), runs `docker compose up --build -d` (volumes preserved) and waits for `/api/health`. To create staff logins in the same run, add for example `-e '{"staff_accounts":[{"role":"officer","name":"Ward Officer","email":"officer@civichelp.local","password":"..."}]}'`.
 

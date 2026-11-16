@@ -1,0 +1,5 @@
+# Scripts that run on Linux / inside WSL must keep Unix line endings (CRLF breaks bash).
+*.sh        text eol=lf
+*.groovy    text eol=lf
+Jenkinsfile text eol=lf
+Jenkinsfile.deploy text eol=lf
