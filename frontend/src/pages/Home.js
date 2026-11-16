@@ -30,12 +30,24 @@ function getIcon(status) {
 
 const steps = [
   { num: '01', icon: <Camera size={28} color="#1a1a1a" strokeWidth={1.5} />, title: 'Snap a pic', desc: 'Saw a pothole on your way? Pull out your phone, take one photo. That\'s ground truth.' },
-  { num: '02', icon: <MapPin size={28} color="#1a1a1a" strokeWidth={1.5} />, title: 'Drop a pin', desc: 'Open CivicHelp, the form pre-fills your location. Two taps, and the pin is on the public map.' },
-  { num: '03', icon: <Megaphone size={28} color="#1a1a1a" strokeWidth={1.5} />, title: 'Rally your crew', desc: 'Share the link. The more upvotes a pin gets, the harder it is for the ward to ignore.' },
-  { num: '04', icon: <Eye size={28} color="#1a1a1a" strokeWidth={1.5} />, title: 'Watch it close', desc: 'Every update shows up live. Before/after photos. Official status. No black boxes.' },
+  { num: '02', icon: <MapPin size={28} color="#1a1a1a" strokeWidth={1.5} />, title: 'Drop a pin', desc: 'Use your current location, search an address or click the map. The pin appears on the public map instantly.' },
+  { num: '03', icon: <Megaphone size={28} color="#1a1a1a" strokeWidth={1.5} />, title: 'Ward takes action', desc: 'The ward officer reviews the report and assigns a field worker, who uploads an after photo once it is fixed.' },
+  { num: '04', icon: <Eye size={28} color="#1a1a1a" strokeWidth={1.5} />, title: 'Verify the fix', desc: 'Compare before/after photos, then confirm the fix or ask for it to be reopened. No black boxes.' },
 ];
 
 const stepColors = ['#fde8e8', '#fde8d8', '#fefde8', '#e8fdf0'];
+
+function formatRelative(dateStr) {
+  const t = new Date(dateStr).getTime();
+  if (isNaN(t)) return '';
+  const mins = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs} h ago`;
+  const days = Math.round(hrs / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+}
 
 function Home() {
   const [complaints, setComplaints] = useState([]);
@@ -60,17 +72,17 @@ function Home() {
         in_progress: res.data.filter(c => c.status === 'in_progress').length,
         resolved: res.data.filter(c => c.status === 'resolved').length,
       });
-    });
+    }).catch(err => console.error('[Home] Failed to load complaints:', err));
   }, []);
 
   const resolutionRate = stats.total > 0 ? Math.round((stats.resolved / stats.total) * 100) : 0;
 
   return (
-    <div style={{ paddingTop: '64px' }}>
+    <div>
 
       {/* HERO */}
-      <section style={{
-        minHeight: '90vh',
+      <section className="home-hero" style={{
+        minHeight: 'calc(90vh - 64px)',
         display: 'flex', alignItems: 'center',
         padding: '60px 80px',
         background: '#fafaf8',
@@ -87,10 +99,10 @@ function Home() {
               width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e',
               animation: 'pulse 2s infinite', display: 'inline-block'
             }} />
-            A student-built civic-tech project · {stats.total} reports live
+            A student-built civic-tech project · {stats.total} reports on the map
           </div>
 
-          <h1 style={{
+          <h1 className="home-hero-title" style={{
             fontSize: '64px', fontWeight: '800', lineHeight: 1.05,
             color: '#1a1a1a', marginBottom: '24px', letterSpacing: '-2px'
           }}>
@@ -104,8 +116,8 @@ function Home() {
 
           <p style={{ fontSize: '17px', color: '#666', lineHeight: 1.7, marginBottom: '36px', maxWidth: '480px' }}>
             CivicHelp lets citizens report civic issues on a live map.
-            Ward officers track and resolve them in real-time.
-            No forms. No calls. No waiting.
+            Ward officers assign field workers, workers upload proof of the fix,
+            and citizens confirm the result. Every update appears live.
           </p>
 
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '40px' }}>
@@ -123,9 +135,9 @@ function Home() {
 
           <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
             {[
-              { label: `${stats.resolved} fixed this week`, icon: '💪' },
-              { label: 'Free & open-source', icon: '⭐' },
-              { label: 'Live across India', icon: '🇮🇳' },
+              { label: `${stats.resolved} issues resolved`, icon: '💪' },
+              { label: 'Photo proof for every fix', icon: '📸' },
+              { label: 'Real-time updates', icon: '⚡' },
             ].map(b => (
               <div key={b.label} style={{
                 display: 'flex', alignItems: 'center', gap: '6px',
@@ -140,14 +152,15 @@ function Home() {
         </div>
 
         {/* Hero Right - Mini Map Preview */}
-        <div style={{
+        <div className="home-hero-map" style={{
           flex: 1, height: '520px', borderRadius: '24px',
           overflow: 'hidden', border: '1px solid #e8e8e8',
           boxShadow: '0 20px 60px rgba(0,0,0,0.08)'
         }}>
           <MapContainer center={[20.5937, 78.9629]} zoom={5}
             style={{ height: '100%', width: '100%' }} zoomControl={false}>
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution='&copy; <a href="https://osm.org/copyright">OpenStreetMap</a> contributors' />
             {complaints.map(c => (
               <Marker key={c.id} position={[c.latitude, c.longitude]} icon={getIcon(c.status)}>
                 <Popup>
@@ -163,7 +176,7 @@ function Home() {
       </section>
 
       {/* IMPACT STATS */}
-      <section id="impact" style={{ padding: '80px', background: 'white' }}>
+      <section id="impact" className="home-section" style={{ padding: '80px', background: 'white' }}>
         <div style={{ marginBottom: '48px' }}>
           <div style={{
             display: 'inline-block', background: '#f0f0f0',
@@ -179,7 +192,7 @@ function Home() {
         </div>
 
         {/* Big Stat Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '16px', marginBottom: '24px' }}>
+        <div className="home-grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '16px', marginBottom: '24px' }}>
           {[
             { label: 'TOTAL REPORTS', count: stats.total, bg: '#f0f0ff', color: '#3b82f6' },
             { label: 'OPEN', count: stats.open, bg: '#fff0f0', color: '#ef4444' },
@@ -192,7 +205,7 @@ function Home() {
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
               textAlign: 'center'
             }}>
-              <div style={{ fontSize: '64px', fontWeight: '800', color: s.color, lineHeight: 1, marginBottom: '12px' }}>
+              <div className="home-stat-count" style={{ fontSize: '64px', fontWeight: '800', color: s.color, lineHeight: 1, marginBottom: '12px' }}>
                 {s.count}
               </div>
               <div style={{ fontSize: '18px', fontWeight: '700', color: '#1a1a1a', letterSpacing: '0.5px' }}>
@@ -203,7 +216,7 @@ function Home() {
         </div>
 
         {/* Bottom Row */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr', gap: '16px' }}>
+        <div className="home-grid-3" style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr', gap: '16px' }}>
           {/* Resolution Rate */}
           <div style={{ background: '#f9f9f9', borderRadius: '20px', padding: '28px', border: '1px solid #e8e8e8' }}>
             <p style={{ fontSize: '14px', fontWeight: '700', color: '#888', letterSpacing: '0.5px', marginBottom: '12px' }}>
@@ -233,7 +246,7 @@ function Home() {
                 background: '#1a1a1a', color: 'white',
                 fontSize: '12px', fontWeight: '600',
                 padding: '4px 12px', borderRadius: '100px'
-              }}>5 cats</span>
+              }}>{Object.keys(categoryIcons).length} categories</span>
             </div>
             {Object.entries(
               complaints.reduce((acc, c) => { acc[c.category] = (acc[c.category] || 0) + 1; return acc; }, {})
@@ -267,17 +280,17 @@ function Home() {
                   {categoryIcons[c.category]} {c.category}
                 </p>
                 <p style={{ fontSize: '11px', color: '#666' }}>
-                  {c.address || 'Unknown location'} · just now
+                  {c.address || 'Unknown location'} · {formatRelative(c.created_at)}
                 </p>
               </div>
             ))}
-            {complaints.length === 0 && <p style={{ fontSize: '13px', color: '#555' }}>No reports yet</p>}
+            {complaints.length === 0 && <p style={{ fontSize: '13px', color: '#888' }}>No reports yet. Be the first to report an issue!</p>}
           </div>
         </div>
       </section>
 
       {/* HOW IT WORKS */}
-      <section id="how" style={{ padding: '80px', background: '#fafaf8' }}>
+      <section id="how" className="home-section" style={{ padding: '80px', background: '#fafaf8' }}>
         <div style={{ marginBottom: '48px' }}>
           <div style={{
             display: 'inline-block', background: '#f0f0f0',
@@ -288,12 +301,12 @@ function Home() {
             Four taps. <span style={{ fontStyle: 'italic', color: '#666' }}>That's it.</span>
           </h2>
           <p style={{ color: '#888', maxWidth: '500px', lineHeight: 1.7, marginTop: '12px' }}>
-            No login walls. No 12-page forms. No "sir please visit office between 10-11am."
+            One free account. One short form. No "please visit the office between 10-11am."
             We built the opposite of that.
           </p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '16px' }}>
+        <div className="home-grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '16px' }}>
           {steps.map((step, i) => (
             <div key={step.num} style={{
               background: stepColors[i],
@@ -318,7 +331,7 @@ function Home() {
       </section>
 
       {/* FOOTER */}
-      <footer style={{
+      <footer className="home-footer" style={{
         padding: '40px 80px',
         background: '#1a1a1a', color: '#888',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center'
@@ -331,7 +344,7 @@ function Home() {
           }}>C</div>
           <span style={{ color: '#f1f1f1', fontWeight: '600' }}>CivicHelp</span>
         </div>
-        <p style={{ fontSize: '13px' }}>Built by students. For citizens. Open source.</p>
+        <p style={{ fontSize: '13px' }}>Built by students. For citizens.</p>
         <div style={{ display: 'flex', gap: '20px' }}>
           <Link to="/map" style={{ color: '#888', textDecoration: 'none', fontSize: '13px' }}>Live Map</Link>
           <Link to="/report" style={{ color: '#888', textDecoration: 'none', fontSize: '13px' }}>Report Issue</Link>

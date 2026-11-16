@@ -7,9 +7,9 @@ const fs = require('fs');
 const dotenv = require('dotenv');
 
 // Load environment variables from cwd, with fallback to root .env
-dotenv.config();
+dotenv.config({ quiet: true });
 if (!process.env.DB_HOST) {
-  dotenv.config({ path: path.resolve(__dirname, '../.env') });
+  dotenv.config({ path: path.resolve(__dirname, '../.env'), quiet: true });
 }
 
 // Validate mandatory environment configuration

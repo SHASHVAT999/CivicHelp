@@ -549,8 +549,7 @@ function MapPage() {
 
   return (
     <div style={{
-      paddingTop: '64px',
-      height: '100vh',
+      height: 'calc(100vh - 64px)',
       display: 'flex',
       flexDirection: 'column',
       background: '#fafaf8',
@@ -709,7 +708,7 @@ function MapPage() {
       </div>
 
       {/* Main Map Viewport */}
-      <div style={{ flex: 1, position: 'relative', width: '100%', height: '100%' }}>
+      <div style={{ flex: 1, position: 'relative', width: '100%', minHeight: 0 }}>
         {/* Error Banner Overlay */}
         {error && (
           <div style={{

@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
-import { API_URL, getImageUrl } from '../config';
+import io from 'socket.io-client';
+import { API_URL, SOCKET_URL, getImageUrl } from '../config';
 import {
   ShieldAlert, HardHat, AlertTriangle, Trash2, Waves, MapPin,
   List, AlertOctagon, Wrench, CheckSquare, RefreshCw, XCircle,
@@ -42,6 +43,8 @@ function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [live, setLive] = useState(false);
+  const [notice, setNotice] = useState(null);
 
   // Resolution modal state for staff (officer & worker)
   const [resolvingComplaint, setResolvingComplaint] = useState(null);
@@ -62,15 +65,33 @@ function Dashboard() {
   useEffect(() => {
     fetchComplaints();
     if (user.role === 'officer') fetchWorkers();
+
+    // Live updates: refresh this role's list whenever any complaint changes
+    const socket = io(SOCKET_URL);
+    let refreshTimer = null;
+    const scheduleRefresh = () => {
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => fetchComplaints('silent'), 300);
+    };
+    socket.on('connect', () => setLive(true));
+    socket.on('disconnect', () => setLive(false));
+    socket.on('newComplaint', scheduleRefresh);
+    socket.on('statusUpdated', scheduleRefresh);
+    return () => {
+      clearTimeout(refreshTimer);
+      socket.disconnect();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchComplaints = async (isManualRefresh = false) => {
-    if (isManualRefresh) {
+  // mode: undefined (initial load), 'manual' (Refresh button) or 'silent' (live update)
+  const fetchComplaints = async (mode) => {
+    if (mode === 'manual' || mode === true) {
       setRefreshing(true);
-    } else {
+    } else if (mode !== 'silent') {
       setLoading(true);
     }
-    setError(null);
+    if (mode !== 'silent') setError(null);
 
     try {
       const endpoint = user.role === 'worker'
@@ -83,9 +104,12 @@ function Dashboard() {
         headers: { Authorization: `Bearer ${token}` }
       });
       setComplaints(res.data);
+      setError(null);
     } catch (err) {
       console.error('[Dashboard Error] Failed to fetch complaints:', err);
-      setError(err.response?.data?.error || 'Failed to load complaints. Please check your connection and try again.');
+      if (mode !== 'silent') {
+        setError(err.response?.data?.error || 'Failed to load complaints. Please check your connection and try again.');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -103,18 +127,25 @@ function Dashboard() {
     }
   };
 
+  const showNotice = (type, text) => {
+    setNotice({ type, text });
+    clearTimeout(showNotice.timer);
+    showNotice.timer = setTimeout(() => setNotice(null), 5000);
+  };
+
   const assignWorker = async (complaintId) => {
-    if (!selectedWorker[complaintId]) return alert('Please select a worker first');
+    if (!selectedWorker[complaintId]) return showNotice('error', 'Please select a field worker first.');
     try {
-      await axios.patch(
+      const res = await axios.patch(
         `${API_URL}/complaints/${complaintId}/assign`,
         { worker_id: selectedWorker[complaintId] },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setAssigningId(null);
-      fetchComplaints(true);
+      setComplaints(prev => prev.map(c => c.id === complaintId ? res.data : c));
+      showNotice('success', `Complaint #${complaintId} assigned to ${res.data.worker_name || 'the selected worker'}.`);
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to assign');
+      showNotice('error', err.response?.data?.error || 'Failed to assign the complaint.');
     }
   };
 
@@ -132,8 +163,9 @@ function Dashboard() {
             : c
         )
       );
+      showNotice('success', `Complaint #${id} moved to ${statusConfig[status]?.label || status}.`);
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to update status');
+      showNotice('error', err.response?.data?.error || 'Failed to update status.');
     }
   };
 
@@ -183,6 +215,7 @@ function Dashboard() {
         }
       );
       setComplaints(prev => prev.map(c => c.id === resolvingComplaint.id ? res.data : c));
+      showNotice('success', `Complaint #${resolvingComplaint.id} resolved. The citizen has been asked to verify the fix.`);
       closeResolutionModal();
     } catch (err) {
       setResolutionError(err.response?.data?.error || 'Failed to submit resolution. Please try again.');
@@ -212,8 +245,11 @@ function Dashboard() {
       setComplaints(prev => prev.map(c => c.id === complaintId ? res.data : c));
       setReopeningId(null);
       setReopeningFeedback('');
+      showNotice('success', action === 'confirm'
+        ? 'Thank you! You confirmed this issue is fixed.'
+        : 'Reopen request sent. The ward team has been notified.');
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to submit verification.');
+      showNotice('error', err.response?.data?.error || 'Failed to submit verification.');
     } finally {
       setSubmittingVerification(false);
     }
@@ -254,8 +290,28 @@ function Dashboard() {
   };
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 64px)', background: '#fafaf8', padding: '96px 20px 32px' }}>
+    <div style={{ minHeight: 'calc(100vh - 64px)', background: '#fafaf8', padding: '32px 16px' }}>
       <div style={{ maxWidth: '960px', margin: '0 auto' }}>
+
+        {/* Action feedback toast */}
+        {notice && (
+          <div role="status" style={{
+            position: 'fixed', top: '80px', left: '50%', transform: 'translateX(-50%)',
+            zIndex: 2500, maxWidth: 'calc(100vw - 32px)',
+            display: 'flex', alignItems: 'center', gap: '10px',
+            padding: '12px 18px', borderRadius: '12px', fontSize: '14px', fontWeight: '600',
+            background: notice.type === 'success' ? '#f0fdf4' : '#fef2f2',
+            color: notice.type === 'success' ? '#15803d' : '#b91c1c',
+            border: `1px solid ${notice.type === 'success' ? '#bbf7d0' : '#fecaca'}`,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.12)'
+          }}>
+            {notice.type === 'success' ? <CheckCircle size={18} /> : <AlertCircle size={18} />}
+            <span>{notice.text}</span>
+            <button onClick={() => setNotice(null)} aria-label="Dismiss" style={{
+              background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', display: 'flex'
+            }}><XCircle size={16} /></button>
+          </div>
+        )}
 
         {/* Header Section */}
         <div style={{
@@ -274,6 +330,19 @@ function Dashboard() {
             }}>
               {roleMeta.badgeIcon}
               {roleMeta.badgeLabel}
+              <span title={live ? 'Receiving real-time updates' : 'Real-time connection unavailable'} style={{
+                display: 'inline-flex', alignItems: 'center', gap: '5px', marginLeft: '8px',
+                padding: '2px 8px', borderRadius: '100px', fontSize: '11px', fontWeight: '700',
+                background: live ? '#f0fdf4' : '#f1f5f9', color: live ? '#16a34a' : '#94a3b8',
+                border: `1px solid ${live ? '#bbf7d0' : '#e2e8f0'}`
+              }}>
+                <span style={{
+                  width: '6px', height: '6px', borderRadius: '50%',
+                  background: live ? '#22c55e' : '#94a3b8',
+                  animation: live ? 'pulse 2s infinite' : 'none'
+                }} />
+                {live ? 'Live' : 'Offline'}
+              </span>
             </div>
             <h2 style={{ fontSize: '28px', fontWeight: '800', color: '#1a1a1a', letterSpacing: '-0.5px', margin: 0 }}>
               {roleMeta.title}
@@ -342,7 +411,7 @@ function Dashboard() {
         {/* Pastel Stats Cards */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
           gap: '16px',
           marginBottom: '32px'
         }}>
@@ -428,7 +497,7 @@ function Dashboard() {
               const sc = statusConfig[c.status] || { color: '#64748b', label: c.status, bg: '#f1f5f9', border: '#e2e8f0' };
 
               return (
-                <div key={c.id} style={{
+                <div key={c.id} className="dash-card" style={{
                   background: 'white',
                   border: '1px solid #e2e8f0',
                   borderRadius: '16px', padding: '24px',
@@ -437,7 +506,7 @@ function Dashboard() {
                   transition: 'all 0.2s'
                 }}>
                   {/* Category Icon */}
-                  <div style={{
+                  <div className="dash-cat-icon" style={{
                     background: '#f1f5f9', width: '44px', height: '44px',
                     borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center',
                     flexShrink: 0

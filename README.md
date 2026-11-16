@@ -1,249 +1,240 @@
 # 🏛️ CivicHelp — Smart Civic Issue Reporting Platform
 
-CivicHelp is a full-stack, open-source civic issue-management platform that empowers citizens to report, track, and resolve local municipal problems (such as potholes, broken streetlights, garbage dumps, and water leaks) directly from their browser on an interactive live map.
+CivicHelp is a full-stack civic issue reporting and municipal management platform. Citizens report local problems (potholes, broken streetlights, garbage dumps, open drains) with a map location and a photo. Ward officers assign field workers, workers upload photographic proof of the fix, and the citizen confirms the resolution or asks for it to be reopened. Every change appears live on the public map and dashboards.
 
 ---
 
 ## 🌟 Key Features
 
-- 📝 **Citizen Reporting:** Submit geo-tagged civic complaints with category selection, automated reverse-geocoding, and photo evidence uploads.
-- 🗺️ **Interactive Public Map:** Real-time OpenStreetMap visualization of municipal issues with status indicators (Open, In Progress, Resolved).
-- 📸 **Robust Upload Pipeline:** Validates JPEG, PNG, and WebP photographs up to 5 MB with persistent Docker volume storage and automated orphan cleanup.
-- 🔐 **Role-Based Access Control:** Secure JWT authentication with strict authorization separating Citizens, Ward Officers, and Field Workers.
-- 📊 **Ward Officer Dashboard:** Authenticated management interface to review complaints, assign field workers, and oversee resolution metrics.
-- 💬 **Live WebSocket Updates:** Instant cross-client synchronization via Socket.IO whenever complaints are submitted or statuses change.
-- 🔔 **Optional Email Notifications:** Automated citizen alerts via Nodemailer upon issue resolution (runs smoothly with or without SMTP configuration).
+- 📝 **Citizen reporting**: category, description, a map pin (click on the map, address search via OpenStreetMap Nominatim, or browser GPS) and an optional photo.
+- 🗺️ **Live public map**: OpenStreetMap/Leaflet map with colour-coded status markers, status and category filters, grouping of overlapping reports, and a detail panel.
+- 👮 **Ward officer dashboard**: every complaint with reporter, assignment to field workers, status tracking, before/after photos and citizen feedback.
+- 👷 **Field worker dashboard**: assigned tasks only; a task can be resolved only by uploading an "after" photo (plus optional notes).
+- ✅ **Citizen verification**: the reporter confirms the fix, or requests reopening with a reason, which sends the task back to *In Progress*.
+- ⚡ **Real-time updates**: Socket.IO pushes new complaints and status changes to the map and to all dashboards (a **Live** badge shows the connection).
+- 🔔 **Email notification (optional)**: Nodemailer emails the citizen when a complaint is resolved, if Gmail SMTP credentials are configured.
+- 🔐 **Security**: bcrypt password hashing, JWT authentication, server-side role checks, upload validation by file signature, and no personal data in public map broadcasts.
 
 ---
 
 ## 🛠️ Architecture & Technology Stack
 
 ```
-                                  [ Citizen / Staff Browser ]
-                                               │
-                                               │ HTTP: 80 / WebSocket
-                                               ▼
-                              ┌──────────────────────────────────┐
-                              │       Nginx Reverse Proxy        │
-                              │   (Container: civichelp-frontend)│
-                              └────────────────┬─────────────────┘
-                                               │
-                       ┌───────────────────────┴───────────────────────┐
-                       │ (Static Assets / SPA)                         │ (Proxy: /api, /socket.io, /uploads)
-                       ▼                                               ▼
-        ┌─────────────────────────────┐                 ┌─────────────────────────────┐
-        │       React 19 Frontend     │                 │     Express / Node.js API   │
-        │   Leaflet / React-Leaflet   │                 │ (Container: civichelp-backend│
-        └─────────────────────────────┘                 └──────────────┬──────────────┘
-                                                                       │
-                                                                       ▼
-                                                        ┌─────────────────────────────┐
-                                                        │          MySQL 8.0          │
-                                                        │  (Container: civichelp-db)  │
-                                                        └─────────────────────────────┘
+                  [ Citizen / Officer / Worker browser ]
+                                  │  HTTP :80 + WebSocket
+                                  ▼
+                 ┌──────────────────────────────────┐
+                 │  Nginx (container: civichelp-frontend)
+                 │  • serves the React build (SPA)  │
+                 │  • proxies /api, /socket.io, /uploads
+                 └────────────────┬─────────────────┘
+                                  │ internal Docker network
+                                  ▼
+                 ┌──────────────────────────────────┐
+                 │  Express 5 + Socket.IO API       │──► volume: uploads-data (photos)
+                 │  (container: civichelp-backend)  │
+                 └────────────────┬─────────────────┘
+                                  ▼
+                 ┌──────────────────────────────────┐
+                 │  MySQL 8.0 (container: civichelp-db) ──► volume: mysql-data
+                 └──────────────────────────────────┘
 ```
 
-- **Frontend:** React 19, React Router 7, Leaflet & React-Leaflet, Axios, Socket.IO Client, Lucide React icons.
-- **Backend:** Node.js, Express 5, Socket.IO 4, Multer, Nodemailer, bcryptjs, jsonwebtoken.
-- **Database:** MySQL 8.0 (canonical schema defined in root [`init.sql`](init.sql)).
-- **Containerization & Web Server:** Docker, Docker Compose, Nginx (Alpine).
-- **Infrastructure as Code (IaC):** Terraform (modular AWS single-node provisioning).
-- **Configuration Management:** Ansible (automated EC2 bootstrap, swap creation, and container orchestration).
-- **CI/CD Automation:** Jenkins (automated pipeline from SCM checkout to deployment).
+| Layer | Technology |
+| :--- | :--- |
+| Frontend | React 19, React Router 7, Leaflet / React-Leaflet, Axios, Socket.IO client, Lucide icons |
+| Backend | Node.js 24, Express 5, Socket.IO 4, Multer, Nodemailer, bcryptjs, jsonwebtoken, mysql2 |
+| Database | MySQL 8.0, schema in [`init.sql`](init.sql) |
+| Containers | Docker, Docker Compose, Nginx (Alpine) |
+| Infrastructure | Terraform (AWS EC2 + security group + key pair) |
+| Configuration | Ansible (Docker install, swap, clone, `.env`, Compose up, health check) |
+| CI/CD | Jenkins declarative pipeline ([`Jenkinsfile`](Jenkinsfile)) |
+
+### Complaint lifecycle
+
+```
+ Citizen reports ──► OPEN ──(officer assigns worker / starts task)──► IN PROGRESS
+                                                                        │
+                       worker/officer uploads "after" photo (required)  ▼
+                                                                    RESOLVED (confirmation: pending)
+                                                                        │
+                    citizen confirms ──► RESOLVED (confirmed) ◄─────────┤
+                    citizen reopens with a reason ──► IN PROGRESS (reopened) ──► resolve again
+```
+
+### Roles
+
+| Role | How the account is created | Can do |
+| :--- | :--- | :--- |
+| Citizen | Self-registration on the Login page | Report issues, track own reports, confirm or reopen resolved ones |
+| Ward officer | `create-staff.js` script (below) | See all complaints, assign or reassign workers, start tasks, resolve with proof |
+| Field worker | `create-staff.js` script (below) | See and resolve only the complaints assigned to them |
+
+Public registration always creates a citizen, even if a different role is sent in the request.
 
 ---
 
-## 🚀 Local Development Guide
+## 🚀 Running Locally with Docker Compose (recommended)
 
-### 1. Environment Configuration
+### 1. Configure the environment
 
-Copy the sample environment file to `.env`:
 ```bash
 cp .env.example .env
 ```
-Open `.env` and configure:
-- `DB_PASSWORD`: Set a secure MySQL password.
-- `JWT_SECRET`: Set a strong random secret key for JWT token signing.
-- `CLIENT_URL`: Configured by default to `http://localhost:3000,http://localhost`.
-- `DB_NAME`: Set to `civichelp`.
-- *(Optional)* `EMAIL_USER` / `EMAIL_PASS`: Gmail App Password if resolution emails are needed.
+
+Set at least `DB_PASSWORD` and `JWT_SECRET` (use long random values). `EMAIL_USER` / `EMAIL_PASS` are optional (Gmail address plus a 16-character App Password). Without them the app runs normally and only skips the email.
+
+### 2. Build and start
+
+```bash
+docker compose up -d --build
+```
+
+Open **http://localhost**. MySQL runs `init.sql` automatically the first time the `mysql-data` volume is created.
+
+> **Windows note:** recent Docker Compose versions build through *buildx bake*. In a non-interactive shell (scripts, Jenkins) a build can stop with `additional privileges requested: pass "--allow=fs.read=..."`. Setting `BUILDX_BAKE_ENTITLEMENTS_FS=0` for that command fixes it:
+> PowerShell: `$env:BUILDX_BAKE_ENTITLEMENTS_FS="0"; docker compose up -d --build`
+> Git Bash: `BUILDX_BAKE_ENTITLEMENTS_FS=0 docker compose up -d --build`
+
+### 3. Create staff accounts
+
+```bash
+docker compose exec backend node scripts/create-staff.js officer "Ward Officer" officer@civichelp.local <password>
+docker compose exec backend node scripts/create-staff.js worker  "Field Worker" worker@civichelp.local  <password>
+```
+
+Add `--reset-password` to change the password of an existing account.
+
+### Useful commands
+
+```bash
+docker compose ps                  # container status (db must show "healthy")
+docker compose logs -f backend     # API and Socket.IO logs
+docker compose down                # stop; data is kept in the named volumes
+```
+
+Never run `docker compose down -v` unless you want to **delete** the database and uploaded photos.
+
+### Ports and data
+
+- `80` (Nginx) is the only public port. The backend (`5001`) and MySQL (`3306`) are bound to `127.0.0.1` for local tools only.
+- `mysql-data` stores the database; `uploads-data` stores the photos. Both survive container rebuilds.
+- Existing databases created before resolution verification was added: apply [`migrations/001_add_resolution_verification.sql`](migrations/001_add_resolution_verification.sql).
+
+### Running without Docker (development)
+
+1. Load `init.sql` into a local MySQL server and set `DB_HOST=127.0.0.1` in `.env`.
+2. `cd backend && npm install && npm run dev`: API on http://localhost:5001
+3. `cd frontend && npm install && npm start`: React dev server on http://localhost:3000 (automatically talks to port 5001)
 
 ---
 
-### 2. Option A: Running with Docker Compose (Recommended)
+## 🎬 Demonstration Script (about 8 minutes)
 
-Docker Compose builds and provisions the complete multi-container stack:
-```bash
-docker compose up --build
-```
+Use **three browser windows** (for example a normal window, a private window, and a second browser), because each role needs its own login session. Keep the **Live Map** open in a fourth tab to show real-time updates.
 
-#### Multi-Container Architecture Details:
-- **Automatic Database Initialization:** MySQL executes root [`init.sql`](init.sql) on initial boot via `/docker-entrypoint-initdb.d/init.sql`. *(Note: `backend/models/db.sql` does not exist).*
-- **Internal Database Network:** The backend connects to MySQL internally via `DB_HOST=db` across `civichelp-network`.
-- **Loopback Database Binding:** MySQL port 3306 is bound strictly to `127.0.0.1:3306` on the host, preventing public exposure while allowing local management tools (e.g. MySQL Workbench, DBeaver) to connect.
-- **Persistent Data:** Photos persist in the `uploads-data` volume; database tables persist in `mysql-data`.
-- **Access URL:** Open `http://localhost` in your browser.
+| # | Window | Action | What to point out |
+|---|---|---|---|
+| 1 | Guest | Open http://localhost and scroll through the Impact section | Live statistics computed from the database |
+| 2 | Citizen | Register *Priya Sharma* (`priya@example.com`), then log in | Registration validation; the role is always *citizen* |
+| 3 | Citizen | **Report Issue** → *Pothole*, description "Deep pothole outside Andheri station, two-wheelers swerving into traffic", search "Andheri station Mumbai", attach a photo, submit | Location is required; photo checked by type and size; success message |
+| 4 | Map tab | Without refreshing, the new red marker appears | Socket.IO broadcast through Nginx |
+| 5 | Officer | Log in as the officer → Dashboard shows the new complaint with photo and reporter | **Live** badge; role-specific dashboard |
+| 6 | Officer | **Assign** → choose the field worker → Save | Status becomes *In Progress*; the map marker turns amber live |
+| 7 | Worker | Log in as the worker → the task is listed → **Submit Resolution Proof**, upload an "after" photo, notes "Filled with cold-mix asphalt and compacted" | Cannot resolve without a photo; only assigned tasks are visible |
+| 8 | Citizen | **My Issues** now shows Before / After photos and the verification prompt | Evidence-based closure |
+| 9 | Citizen | **Request Reopening** → reason "Patch already sinking after rain" | Task goes back to *In Progress*; the officer sees a red *Citizen Reopened* banner |
+| 10 | Worker → Citizen | Worker resolves again with a new photo; citizen clicks **Confirm Fixed** | Final state *Verified Fixed*; the map shows green |
+| 11 | Terminal | `docker compose ps` and `docker compose restart`, then reload | Data and photos persist (named volumes) |
 
----
-
-### 3. Option B: Running Locally (Hybrid / Host Development)
-
-#### Step 1: Initialize the Database
-Ensure a local MySQL instance (or Docker MySQL container) is running:
-```bash
-mysql -u root -p < init.sql
-```
-In your root `.env`, configure:
-```ini
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=your_db_password_here
-DB_NAME=civichelp
-```
-
-#### Step 2: Start the Backend API
-```bash
-cd backend
-npm install
-npm run dev
-```
-The backend API starts on `http://localhost:5001`.
-
-#### Step 3: Start the React Frontend
-In a separate terminal:
-```bash
-cd frontend
-npm install
-npm start
-```
-The React development server opens at `http://localhost:3000` and automatically routes requests to the backend at `http://localhost:5001`.
+Tip: prepare two photos in advance (a "before" and an "after" image, JPEG/PNG/WebP under 5 MB).
 
 ---
 
-## ☁️ AWS Deployment Guide (AWS Academy Learner Lab)
+## ☁️ AWS Deployment (AWS Academy Learner Lab)
 
-This deployment architecture is specifically optimized for **AWS Academy Learner Lab** accounts ($49 credit limit), utilizing an economical single-EC2 instance without costly managed services (no AWS RDS, no Application Load Balancer, and no NAT Gateways).
+Single, economical node: no RDS, load balancer or NAT gateway.
 
 ```
-                      Internet
-                         │
-             ┌───────────┴───────────┐
-             │ Port 80 (HTTP)        │ Port 22 (SSH)
-             │ (Public to World)     │ (Restricted to Admin CIDR)
-             ▼                       ▼
-      ┌─────────────────────────────────────────────────────┐
-      │         AWS EC2 Instance (t3.micro / Ubuntu 22.04)  │
-      │                                                     │
-      │   ┌──────────────────────────────────────────────┐  │
-      │   │              Docker Compose                  │  │
-      │   │                                              │  │
-      │   │   civichelp-frontend   (Nginx :80)           │  │
-      │   │          │                                   │  │
-      │   │          ▼                                   │  │
-      │   │   civichelp-backend    (Express :5001)       │  │
-      │   │          │                                   │  │
-      │   │          ▼                                   │  │
-      │   │   civichelp-db         (MySQL 8.0 :3306)     │  │
-      │   └──────────────────────────────────────────────┘  │
-      └─────────────────────────────────────────────────────┘
+Internet ──► Security group civichelp-sg
+             • 80/tcp from 0.0.0.0/0      (Nginx)
+             • 22/tcp from admin_cidr/32  (SSH, your IP only)
+                     │
+                     ▼
+        EC2 t3.micro · Ubuntu 22.04 · 20 GB gp3 · us-east-1a
+        └── Docker Compose: frontend (Nginx :80) → backend (:5001, internal) → MySQL (internal)
 ```
 
-### AWS Resources & Network Ingress Rules
+### Prerequisites
 
-| Resource | Identifier / Name | Description & Cost Strategy |
-| :--- | :--- | :--- |
-| **EC2 Instance** | `civichelp-server` | Ubuntu 22.04 LTS (`t3.micro`, 20GB gp3 storage) — Economical. |
-| **Security Group** | `civichelp-sg` | Ingress: Port 80 (0.0.0.0/0), Port 22 (restricted to `var.admin_cidr`). |
-| **SSH Key Pair** | `civichelp-key` | User-provided public SSH key (private key stays on local machine). |
-| **Backend Port 5001** | *Internal Only* | **Not exposed to the public internet**; accessible only via Nginx reverse proxy. |
-| **MySQL Port 3306** | *Internal Only* | **Not exposed to the public internet**; accessible only via Docker bridge network. |
+1. Start the Learner Lab and copy the **AWS CLI credentials** (access key, secret key, **session token**) into your AWS credentials file. They expire when the lab session ends, so check them with `aws sts get-caller-identity`.
+2. Terraform ≥ 1.0 and the AWS CLI. Ansible runs inside **WSL Ubuntu** on Windows.
+3. An SSH key pair (`ssh-keygen -t ed25519 -f civichelp-key -N ""`); its public key goes in `terraform.tfvars`.
 
----
+### 1. Terraform
 
-### Step-by-Step AWS Provisioning
+`terraform/terraform.tfvars` (git-ignored):
 
-#### Prerequisites
-1. **AWS CLI configured with AWS Academy credentials:**
-   ```bash
-   aws configure
-   ```
-   *(For AWS Academy Learner Lab, update `~/.aws/credentials` with `aws_access_key_id`, `aws_secret_access_key`, and `aws_session_token`).*
-2. **Terraform CLI (v1.0+)** and **Ansible (`ansible-playbook`)** installed.
-3. **Generate a local SSH key pair:**
-   ```bash
-   ssh-keygen -t rsa -b 4096 -f ~/.ssh/civichelp-key -N ""
-   ```
+```hcl
+aws_region    = "us-east-1"
+instance_type = "t3.micro"
+key_name      = "civichelp-key"
+public_key    = "ssh-ed25519 AAAA... "    # contents of civichelp-key.pub
+admin_cidr    = "YOUR_CURRENT_PUBLIC_IP/32"
+```
 
-#### 1. Provision Infrastructure with Terraform
-Navigate to the `terraform/` directory:
 ```bash
 cd terraform
 terraform init
-```
-
-Create a `terraform.tfvars` file (automatically ignored by Git):
-```hcl
-aws_region  = "us-east-1"
-instance_type = "t3.micro"
-public_key  = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQ..." # Contents of ~/.ssh/civichelp-key.pub
-admin_cidr  = "YOUR_PUBLIC_IP/32"                         # Restrict SSH to your IP
-```
-
-Apply the configuration:
-```bash
+terraform plan      # always read the plan first
 terraform apply
 ```
-Terraform will output the EC2 public IP address:
+
+- **Your public IP changes** on most home and mobile connections. When SSH times out, update `admin_cidr` (`curl https://checkip.amazonaws.com`) and apply again. This is an in-place security-group change.
+- Stopping and starting the instance (including the Learner Lab auto-stop) **changes its public IP**. Run `terraform refresh` and then `terraform output ec2_public_ip`.
+- The instance ignores newer AMI releases (`lifecycle.ignore_changes = [ami]`), so a plan never replaces the server just because Ubuntu published a new image.
+- Keep **one** Terraform state (`terraform/terraform.tfstate`). Running Terraform from another directory without it would try to create duplicate resources.
+
+### 2. Ansible (from WSL Ubuntu)
+
+The EC2 instance clones the app from GitHub, so **push your changes first**.
+
 ```bash
-Apply complete! Resources: 3 added, 0 changed, 0 destroyed.
-Outputs:
-application_url = "http://54.xxx.xxx.xxx"
-ec2_public_ip = "54.xxx.xxx.xxx"
+# inside WSL
+cp /mnt/d/AWSConfig/civichelp-key ~/.ssh/civichelp-key && chmod 600 ~/.ssh/civichelp-key
+cd /mnt/d/CivicHelp
+export DB_PASSWORD='...' JWT_SECRET='...'     # secrets via environment, never on the command line
+ansible-playbook -i "<EC2_IP>," -u ubuntu --private-key ~/.ssh/civichelp-key ansible/deploy.yml \
+  -e "ec2_ip=<EC2_IP>" \
+  -e "git_repo_url=https://github.com/SHASHVAT999/CivicHelp.git" -e "git_branch=main"
 ```
+
+The playbook adds 2 GB of swap (the React build needs it on a 1 GB t3.micro), installs Docker from Docker's signed apt repository, clones the repo, writes `.env` with mode `0600` (`no_log`), runs `docker compose up --build -d` (volumes preserved) and waits for `/api/health`. To create staff logins in the same run, add for example `-e '{"staff_accounts":[{"role":"officer","name":"Ward Officer","email":"officer@civichelp.local","password":"..."}]}'`.
+
+### 3. Jenkins pipeline
+
+[`Jenkinsfile`](Jenkinsfile) stages: **Checkout → Validate → Build Images → [AWS Preflight → Terraform → Ansible Deploy → Smoke Test]**. The bracketed stages run only when `DEPLOY_TO_AWS` is ticked.
+
+- A default run (`DEPLOY_TO_AWS` unticked) validates `docker-compose.yml`, Terraform formatting and the Ansible syntax, and builds both Docker images. It costs nothing on AWS.
+- Deployment reuses the existing state through `TF_DIR` (default `D:/CivicHelp/terraform`), checks that the AWS credentials are still valid, applies a saved plan, runs Ansible (natively on Linux, or through WSL on a Windows Jenkins), and checks `http://<ip>/api/health`.
+- Required Jenkins credentials (*Manage Jenkins → Credentials → System → Global*, kind **Secret text**): `CIVICHELP_DB_PASSWORD`, `CIVICHELP_JWT_SECRET`. They reach Ansible only as environment variables.
+- Windows agent requirements: Git for Windows `sh` in the `PATH` of the Jenkins process, Docker Desktop, `terraform`, `aws`, and a WSL distribution with Ansible.
 
 ---
 
-#### 2. Deploy Application with Ansible
-From the project root, export your deployment secrets safely in your shell session, then run the Ansible playbook:
-```bash
-# Set deployment secrets as environment variables (recommended):
-export DB_PASSWORD="your_secure_db_password"
-export JWT_SECRET="your_secure_jwt_secret"
+## 🔒 Security Summary
 
-ansible-playbook -i "54.xxx.xxx.xxx," ansible/deploy.yml \
-  -u ubuntu \
-  --private-key ~/.ssh/civichelp-key \
-  -e "git_repo_url=https://github.com/<your-username>/CivicHelp.git" \
-  -e "git_branch=main" \
-  -e "ec2_ip=54.xxx.xxx.xxx"
-```
-*(Alternatively, pass them via extra-vars: `-e "db_password=your_secure_db_password" -e "jwt_secret=your_secure_jwt_secret"`).*
+- Passwords hashed with bcrypt; JWT (7-day expiry); the UI logs out automatically when a session expires.
+- Authorization enforced on the server: officer-only management endpoints, workers limited to their own assignments, only the reporter can verify, and assignment accepts only real field-worker accounts.
+- Uploads: JPEG/PNG/WebP only, 5 MB limit (Nginx `client_max_body_size 6M`), content checked by file signature (magic bytes), invalid or orphaned files deleted.
+- Public map API and Socket.IO broadcasts contain no names, emails or user IDs.
+- Secrets live only in `.env` / Jenkins credentials (git-ignored); MySQL and the API are not exposed publicly; SSH is limited to one admin IP.
 
-The playbook will:
-1. Allocate a 2GB swap file to prevent out-of-memory errors during the frontend build.
-2. Install Docker CE and the Docker Compose plugin.
-3. Clone the CivicHelp repository.
-4. Generate the secure runtime `.env` file (`no_log: true` prevents credential exposure in logs).
-5. Build and launch all three containers (`docker compose up --build -d`).
-6. Wait for HTTP port 80 to become responsive.
+## ⚠️ Known Limitations / Future Work
 
----
-
-#### 3. Automated CI/CD with Jenkins
-The included [`Jenkinsfile`](Jenkinsfile) automates the entire provisioning and deployment sequence:
-- **Parameters:**
-  - `GIT_REPO_URL`: URL to your CivicHelp repository.
-  - `GIT_BRANCH`: Target branch (default `main`).
-  - `SSH_PRIVATE_KEY_PATH`: Path to SSH key on Jenkins agent (default `~/.ssh/civichelp-key`).
-  - `ADMIN_CIDR`: Allowed administrator CIDR for SSH access.
-- **Pipeline Execution Sequence:**
-  1. `Prerequisites Check`: Validates that `ADMIN_CIDR` is set (rejecting `0.0.0.0/0`) and confirms `terraform` and `ansible-playbook` exist in PATH.
-  2. `Checkout`: Pulls the latest application source code.
-  3. `Terraform`: Provisions EC2 and security groups, exporting `ec2_ip.txt`.
-  4. `Ansible`: Generates dynamic inventory `[civichelp]` and deploys containers.
-  5. `Done`: Outputs live application URL.
-
-> [!NOTE]
-> **Jenkins Agent Prerequisite (Windows / WSL):**
-> The pipeline uses POSIX shell steps (`sh`) and runs `ansible-playbook`. Because Ansible requires a POSIX environment and does not execute natively in Windows `bat`/`cmd`, when hosting Jenkins on Windows, configure the pipeline to execute on a **Linux or WSL2-backed Jenkins agent** where Terraform and Ansible are installed.
+- HTTP only: no domain or TLS certificate yet (Let's Encrypt plus a domain would be the next step).
+- Email notification is sent only on resolution, and only when SMTP credentials are configured.
+- Staff accounts are created with a CLI script; there is no admin UI.
+- No pagination: suitable for demo-scale data, not thousands of complaints.
+- Single EC2 instance with a local MySQL container: no high availability; backups would need snapshots or `mysqldump`.
+- Address search depends on the public Nominatim service (rate-limited) and is restricted to India.

@@ -1,18 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+
+const roleLabels = { citizen: 'Citizen', officer: 'Ward Officer', worker: 'Field Worker' };
 
 function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
   const token = localStorage.getItem('token');
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const [scrolled, setScrolled] = useState(false);
-
-  useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  let user = {};
+  try { user = JSON.parse(localStorage.getItem('user') || '{}') || {}; } catch { user = {}; }
+  const isStaff = user.role === 'officer' || user.role === 'worker';
 
   const logout = () => {
     localStorage.removeItem('token');
@@ -20,18 +17,22 @@ function Navbar() {
     navigate('/login');
   };
 
+  const links = [
+    { path: '/', label: 'Home' },
+    { path: '/map', label: 'Live Map' },
+    { path: '/#impact', label: 'Impact', secondary: true },
+    { path: '/#how', label: 'How it Works', secondary: true },
+  ];
+  if (token) links.push({ path: '/dashboard', label: user.role === 'citizen' ? 'My Issues' : 'Dashboard' });
+
+  const pillButton = {
+    padding: '8px 18px', background: 'transparent', color: 'white',
+    border: '1px solid rgba(255,255,255,0.2)', borderRadius: '100px',
+    cursor: 'pointer', fontSize: '14px', fontWeight: '600', fontFamily: 'inherit'
+  };
+
   return (
-    <nav style={{
-      position: 'sticky', top: 0, zIndex: 1000,
-      background: '#0f172a',
-      borderBottom: '1px solid rgba(255,255,255,0.1)',
-      padding: '0 32px',
-      height: '64px',
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      transition: 'all 0.3s',
-    }}>
+    <nav className="navbar">
       {/* Logo */}
       <Link to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '10px' }}>
         <div style={{
@@ -41,64 +42,45 @@ function Navbar() {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: '16px', fontWeight: '800', color: '#0f172a'
         }}>C</div>
-        <span style={{ fontSize: '18px', fontWeight: '700', color: 'white' }}>CivicHelp</span>
+        <span className="navbar-brand" style={{ fontSize: '18px', fontWeight: '700', color: 'white' }}>CivicHelp</span>
       </Link>
 
       {/* Center Links */}
-      <div style={{ display: 'flex', gap: '4px' }}>
-        {[
-          { path: '/', label: 'Home' },
-          { path: '/map', label: 'Live Map' },
-          { path: '/#impact', label: 'Impact' },
-          { path: '/#how', label: 'How it Works' },
-        ].map(link => (
-          <Link key={link.path} to={link.path} style={{
-            color: location.pathname === link.path ? 'white' : '#94a3b8',
-            textDecoration: 'none',
-            fontSize: '14px',
-            fontWeight: '500',
-            padding: '8px 14px',
-            borderRadius: '100px',
-            background: location.pathname === link.path ? 'rgba(255,255,255,0.1)' : 'transparent',
-            transition: 'all 0.2s',
-          }}>{link.label}</Link>
-        ))}
-        {token && (
-          <Link to="/dashboard" style={{
-            color: location.pathname === '/dashboard' ? 'white' : '#94a3b8',
-            textDecoration: 'none',
-            fontSize: '14px',
-            fontWeight: '500',
-            padding: '8px 14px',
-            borderRadius: '100px',
-            background: location.pathname === '/dashboard' ? 'rgba(255,255,255,0.1)' : 'transparent',
-            transition: 'all 0.2s',
-          }}>
-            {user.role === 'citizen' ? 'My Issues' : 'Dashboard'}
-          </Link>
-        )}
+      <div className="navbar-links">
+        {links.map(link => {
+          const active = location.pathname === link.path && !location.hash;
+          return (
+            <Link key={link.path} to={link.path}
+              className={`navbar-link${link.secondary ? ' navbar-link-secondary' : ''}${link.path === '/' ? ' navbar-link-home' : ''}`}
+              style={{
+                color: active ? 'white' : '#94a3b8',
+                background: active ? 'rgba(255,255,255,0.1)' : 'transparent',
+              }}>{link.label}</Link>
+          );
+        })}
       </div>
 
       {/* Right Buttons */}
-      <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-        <Link to="/report">
-          <button style={{ padding: '8px 18px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '100px', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
-            Report Issue
-          </button>
-        </Link>
+      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexShrink: 0 }}>
+        {!isStaff && (
+          <Link to="/report">
+            <button style={{ ...pillButton, background: '#ef4444', border: 'none' }}>
+              Report<span className="navbar-hide-mobile"> Issue</span>
+            </button>
+          </Link>
+        )}
         {token ? (
           <>
-            <span style={{ fontSize: '13px', color: '#94a3b8', marginLeft: '4px' }}>Hi, {user.name}</span>
-            <button onClick={logout} style={{ padding: '8px 18px', background: 'transparent', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '100px', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
-              Logout
-            </button>
+            <span className="navbar-hide-mobile" style={{ fontSize: '13px', color: '#94a3b8', marginLeft: '4px', textAlign: 'right', lineHeight: 1.3 }}>
+              Hi, {user.name}
+              {user.role && <span style={{ display: 'block', fontSize: '11px', color: '#64748b' }}>{roleLabels[user.role] || user.role}</span>}
+            </span>
+            <button onClick={logout} style={pillButton}>Logout</button>
           </>
         ) : (
-          <>
-            <Link to="/login">
-              <button style={{ padding: '8px 18px', background: 'transparent', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '100px', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>Login</button>
-            </Link>
-          </>
+          <Link to="/login">
+            <button style={pillButton}>Login</button>
+          </Link>
         )}
       </div>
     </nav>

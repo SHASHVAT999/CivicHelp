@@ -6,7 +6,23 @@ import Login from './pages/Login';
 import MapPage from './pages/MapPage';
 import ReportComplaint from './pages/ReportComplaint';
 import Dashboard from './pages/Dashboard';
+import axios from 'axios';
 import './App.css';
+
+// Expired or invalid session: clear credentials and send the user to login
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error.response?.status;
+    const url = error.config?.url || '';
+    if (status === 401 && localStorage.getItem('token') && !url.includes('/auth/')) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.assign('/login?expired=1');
+    }
+    return Promise.reject(error);
+  }
+);
 
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem('token');

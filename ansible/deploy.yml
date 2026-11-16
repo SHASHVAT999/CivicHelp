@@ -136,17 +136,38 @@
       shell: cd {{ target_deploy_dir }} && docker compose down
       ignore_errors: yes
 
+    # Named volumes (mysql-data, uploads-data) are preserved: 'down' is run without -v.
     - name: Build and start CivicHelp containers in detached mode
       shell: cd {{ target_deploy_dir }} && docker compose up --build -d
-      async: 1200
+      environment:
+        # Newer Compose releases build through buildx bake, which can stop a
+        # non-interactive build to ask for filesystem entitlements.
+        BUILDX_BAKE_ENTITLEMENTS_FS: "0"
+      async: 1800
       poll: 30
 
-    - name: Wait for CivicHelp web application to become responsive on port 80
-      wait_for:
-        port: 80
-        host: "{{ ansible_host | default(ec2_ip | default('127.0.0.1')) }}"
-        timeout: 180
+    - name: Wait for the CivicHelp API to report healthy through Nginx
+      uri:
+        url: http://127.0.0.1/api/health
+        status_code: 200
+      register: health
+      retries: 30
+      delay: 10
+      until: health.status == 200
+
+    # Optional: provision staff logins (public registration only creates citizens).
+    # Pass e.g. -e '{"staff_accounts":[{"role":"officer","name":"Ward Officer","email":"officer@civichelp.local","password":"..."}]}'
+    - name: Create staff accounts (officer / worker)
+      command: >
+        docker compose exec -T backend node scripts/create-staff.js
+        {{ item.role }} "{{ item.name }}" {{ item.email }} {{ item.password }}
+      args:
+        chdir: "{{ target_deploy_dir }}"
+      loop: "{{ staff_accounts | default([]) }}"
+      no_log: true
+      register: staff_result
+      changed_when: "'Created' in staff_result.stdout"
 
     - name: Display deployment success message
       debug:
-        msg: "CivicHelp deployment completed successfully! The platform is live on port 80."
+        msg: "CivicHelp deployment completed successfully! Open http://{{ ec2_ip | default(ansible_host) }} in a browser."

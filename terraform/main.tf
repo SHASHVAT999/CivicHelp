@@ -96,4 +96,10 @@ resource "aws_instance" "civichelp_server" {
   tags = {
     Name = "civichelp-server"
   }
+
+  # The AMI lookup returns the newest Ubuntu image. Without this, every new
+  # Canonical release would force Terraform to destroy and recreate the server.
+  lifecycle {
+    ignore_changes = [ami]
+  }
 }

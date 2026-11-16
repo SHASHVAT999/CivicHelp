@@ -32,11 +32,22 @@ if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
   console.log('[Notification] EMAIL_USER / EMAIL_PASS not configured. Resolution emails will be skipped.');
 }
 
-const sendResolutionEmail = async (citizenEmail, citizenName, category, address) => {
+// Escape user-supplied text before embedding it in email HTML
+const escapeHtml = (value) => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
+const sendResolutionEmail = async (citizenEmail, rawName, rawCategory, rawAddress) => {
   if (!transporter || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.log(`[Notification] Skipping resolution email for complaint at "${address}". SMTP not configured.`);
+    console.log('[Notification] Skipping resolution email: SMTP not configured.');
     return;
   }
+  const citizenName = escapeHtml(rawName);
+  const category = escapeHtml(rawCategory);
+  const address = rawAddress ? escapeHtml(rawAddress) : '';
   try {
     await transporter.sendMail({
       from: `"CivicHelp" <${process.env.EMAIL_USER}>`,
@@ -220,6 +231,23 @@ router.patch('/:id/assign', auth, async (req, res) => {
   }
 
   try {
+    // The assignee must be an existing field worker
+    const [workerRows] = await db.query(
+      "SELECT id FROM users WHERE id = ? AND role = 'worker'",
+      [worker_id]
+    );
+    if (workerRows.length === 0) {
+      return res.status(400).json({ error: 'Selected user is not a registered field worker' });
+    }
+
+    const [existing] = await db.query('SELECT status FROM complaints WHERE id = ?', [req.params.id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ error: 'Complaint not found' });
+    }
+    if (existing[0].status === 'resolved') {
+      return res.status(400).json({ error: 'Resolved complaints cannot be reassigned' });
+    }
+
     await db.query(
       "UPDATE complaints SET assigned_to = ?, status = 'in_progress' WHERE id = ?",
       [worker_id, req.params.id]

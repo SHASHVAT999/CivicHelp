@@ -7,22 +7,39 @@ function Login() {
   const [isRegister, setIsRegister] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [error, setError] = useState('');
+  const [info, setInfo] = useState(
+    new URLSearchParams(window.location.search).get('expired')
+      ? 'Your session has expired. Please log in again.'
+      : ''
+  );
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(''); setLoading(true);
+    setError(''); setInfo('');
+    if (isRegister && form.name.trim().length < 2) {
+      return setError('Please enter your full name.');
+    }
+    if (isRegister && form.password.length < 6) {
+      return setError('Password must be at least 6 characters.');
+    }
+    setLoading(true);
     try {
       const url = `${API_URL}/auth/${isRegister ? 'register' : 'login'}`;
-      const res = await axios.post(url, form);
+      const payload = isRegister
+        ? { name: form.name.trim(), email: form.email.trim(), password: form.password }
+        : { email: form.email.trim(), password: form.password };
+      const res = await axios.post(url, payload);
       if (isRegister) {
         setIsRegister(false);
-        alert('Account created! Please login.');
+        setForm({ name: '', email: payload.email, password: '' });
+        setInfo('Account created! Please log in with your new credentials.');
       } else {
         localStorage.setItem('token', res.data.token);
         localStorage.setItem('user', JSON.stringify(res.data.user));
-        navigate('/');
+        // Citizens land on the home page; staff go straight to their dashboard
+        navigate(res.data.user.role === 'citizen' ? '/' : '/dashboard');
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Something went wrong');
@@ -62,6 +79,7 @@ function Login() {
           borderRadius: '20px', padding: '32px',
           boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)'
         }}>
+          {info && <div className="success">{info}</div>}
           {error && <div className="error">{error}</div>}
           <form onSubmit={handleSubmit}>
             {isRegister && (
@@ -75,7 +93,9 @@ function Login() {
             <input type="email" placeholder="your@email.com" required
               value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
             <label>Password</label>
-            <input type="password" placeholder="••••••••" required
+            <input type="password" placeholder={isRegister ? 'At least 6 characters' : '••••••••'} required
+              minLength={isRegister ? 6 : undefined}
+              autoComplete={isRegister ? 'new-password' : 'current-password'}
               value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
             <button type="submit" disabled={loading} style={{
               width: '100%', padding: '13px',
@@ -94,7 +114,7 @@ function Login() {
             textAlign: 'center', fontSize: '14px', color: '#666'
           }}>
             {isRegister ? 'Already have an account?' : "Don't have an account?"}
-            <button onClick={() => { setIsRegister(!isRegister); setError(''); }} style={{
+            <button type="button" onClick={() => { setIsRegister(!isRegister); setError(''); setInfo(''); }} style={{
               background: 'none', border: 'none', color: '#60a5fa',
               cursor: 'pointer', fontWeight: '600', marginLeft: '6px', fontSize: '14px'
             }}>
