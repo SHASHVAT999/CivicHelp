@@ -138,7 +138,7 @@ pipeline {
             steps {
                 sh '''
                 echo "--- Backend unit tests (node:test) inside the image that was just built"
-                docker run --rm civichelp-backend:$IMAGE_TAG npm test
+                docker run --rm civichelp-backend:$IMAGE_TAG node --test --test-reporter=tap "tests/*.test.js"
                 echo "--- Frontend image: Nginx configuration test"
                 docker run --rm --add-host backend:127.0.0.1 civichelp-frontend:$IMAGE_TAG nginx -t
                 docker run --rm civichelp-frontend:$IMAGE_TAG test -f /usr/share/nginx/html/index.html

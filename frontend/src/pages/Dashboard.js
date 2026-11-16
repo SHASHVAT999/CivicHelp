@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import axios from 'axios';
 import io from 'socket.io-client';
 import { API_URL, SOCKET_URL, getImageUrl } from '../config';
+import { getStoredUser } from '../categories';
 import {
   ShieldAlert, HardHat, AlertTriangle, Trash2, Waves, MapPin,
   List, AlertOctagon, Wrench, CheckSquare, RefreshCw, XCircle,
@@ -11,18 +12,18 @@ import {
 } from 'lucide-react';
 
 const statusConfig = {
-  open: { color: '#ef4444', label: 'Open', bg: '#fef2f2', border: '#fecaca' },
-  in_progress: { color: '#f59e0b', label: 'In Progress', bg: '#fffbeb', border: '#fde68a' },
-  resolved: { color: '#22c55e', label: 'Resolved', bg: '#f0fdf4', border: '#bbf7d0' },
+  open: { color: '#c2410c', label: 'Open', bg: '#fff4ed', border: '#f8d3bf' },
+  in_progress: { color: '#a16207', label: 'In Progress', bg: '#fefbe8', border: '#f3e3a3' },
+  resolved: { color: '#15803d', label: 'Resolved', bg: '#f0fdf4', border: '#bbf7d0' },
 };
 
 const getCategoryIcon = (category) => {
   switch (category) {
-    case 'Pothole': return <AlertTriangle size={20} strokeWidth={2.5} color="#475569" />;
-    case 'Broken Streetlight': return <AlertOctagon size={20} strokeWidth={2.5} color="#475569" />;
-    case 'Garbage Dump': return <Trash2 size={20} strokeWidth={2.5} color="#475569" />;
-    case 'Open Drain': return <Waves size={20} strokeWidth={2.5} color="#475569" />;
-    default: return <MapPin size={20} strokeWidth={2.5} color="#475569" />;
+    case 'Pothole': return <AlertTriangle size={20} strokeWidth={2.5} color="#4d4d48" />;
+    case 'Broken Streetlight': return <AlertOctagon size={20} strokeWidth={2.5} color="#4d4d48" />;
+    case 'Garbage Dump': return <Trash2 size={20} strokeWidth={2.5} color="#4d4d48" />;
+    case 'Open Drain': return <Waves size={20} strokeWidth={2.5} color="#4d4d48" />;
+    default: return <MapPin size={20} strokeWidth={2.5} color="#4d4d48" />;
   }
 };
 
@@ -60,7 +61,7 @@ function Dashboard() {
   const [submittingVerification, setSubmittingVerification] = useState(false);
 
   const token = localStorage.getItem('token');
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const user = getStoredUser();
 
   useEffect(() => {
     fetchComplaints();
@@ -290,7 +291,7 @@ function Dashboard() {
   };
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 64px)', background: '#fafaf8', padding: '32px 16px' }}>
+    <div style={{ minHeight: 'calc(100vh - 64px)', background: '#f7f7f4', padding: '32px 16px' }}>
       <div style={{ maxWidth: '960px', margin: '0 auto' }}>
 
         {/* Action feedback toast */}
@@ -299,10 +300,10 @@ function Dashboard() {
             position: 'fixed', top: '80px', left: '50%', transform: 'translateX(-50%)',
             zIndex: 2500, maxWidth: 'calc(100vw - 32px)',
             display: 'flex', alignItems: 'center', gap: '10px',
-            padding: '12px 18px', borderRadius: '12px', fontSize: '14px', fontWeight: '600',
-            background: notice.type === 'success' ? '#f0fdf4' : '#fef2f2',
+            padding: '12px 18px', borderRadius: '8px', fontSize: '14px', fontWeight: '600',
+            background: notice.type === 'success' ? '#f0fdf4' : '#fff4ed',
             color: notice.type === 'success' ? '#15803d' : '#b91c1c',
-            border: `1px solid ${notice.type === 'success' ? '#bbf7d0' : '#fecaca'}`,
+            border: `1px solid ${notice.type === 'success' ? '#bbf7d0' : '#f8d3bf'}`,
             boxShadow: '0 8px 24px rgba(0,0,0,0.12)'
           }}>
             {notice.type === 'success' ? <CheckCircle size={18} /> : <AlertCircle size={18} />}
@@ -325,7 +326,7 @@ function Dashboard() {
           <div>
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px',
-              color: '#64748b', fontSize: '13px', fontWeight: '600',
+              color: '#66665f', fontSize: '13px', fontWeight: '600',
               marginBottom: '10px'
             }}>
               {roleMeta.badgeIcon}
@@ -333,18 +334,18 @@ function Dashboard() {
               <span title={live ? 'Receiving real-time updates' : 'Real-time connection unavailable'} style={{
                 display: 'inline-flex', alignItems: 'center', gap: '5px', marginLeft: '8px',
                 padding: '2px 8px', borderRadius: '100px', fontSize: '11px', fontWeight: '700',
-                background: live ? '#f0fdf4' : '#f1f5f9', color: live ? '#16a34a' : '#94a3b8',
-                border: `1px solid ${live ? '#bbf7d0' : '#e2e8f0'}`
+                background: live ? '#f0fdf4' : '#f1f1ee', color: live ? '#15803d' : '#8f8e86',
+                border: `1px solid ${live ? '#bbf7d0' : '#e3e2dc'}`
               }}>
                 <span style={{
                   width: '6px', height: '6px', borderRadius: '50%',
-                  background: live ? '#22c55e' : '#94a3b8',
+                  background: live ? '#15803d' : '#8f8e86',
                   animation: live ? 'pulse 2s infinite' : 'none'
                 }} />
                 {live ? 'Live' : 'Offline'}
               </span>
             </div>
-            <h2 style={{ fontSize: '28px', fontWeight: '800', color: '#1a1a1a', letterSpacing: '-0.5px', margin: 0 }}>
+            <h2 style={{ fontSize: '28px', fontWeight: '700', color: '#1c1c1a', letterSpacing: '-0.5px', margin: 0 }}>
               {roleMeta.title}
             </h2>
             <p style={{ color: '#555', fontSize: '14px', marginTop: '6px', maxWidth: '580px' }}>
@@ -358,8 +359,8 @@ function Dashboard() {
               disabled={refreshing}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: '8px',
-                padding: '9px 16px', background: 'white', border: '1px solid #cbd5e1',
-                borderRadius: '100px', fontSize: '13px', fontWeight: '600', color: '#334155',
+                padding: '9px 16px', background: 'white', border: '1px solid #d4d3cc',
+                borderRadius: '100px', fontSize: '13px', fontWeight: '600', color: '#3a3a36',
                 cursor: refreshing ? 'not-allowed' : 'pointer', transition: 'all 0.2s',
                 boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
               }}
@@ -372,11 +373,11 @@ function Dashboard() {
               <Link to="/report" style={{ textDecoration: 'none' }}>
                 <button style={{
                   display: 'inline-flex', alignItems: 'center', gap: '8px',
-                  padding: '9px 18px', background: '#ef4444', color: 'white',
-                  border: 'none', borderRadius: '100px', fontSize: '13px', fontWeight: '600',
-                  cursor: 'pointer', boxShadow: '0 2px 4px rgba(239,68,68,0.2)'
+                  padding: '9px 18px', background: '#2451b7', color: 'white',
+                  border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: '600',
+                  cursor: 'pointer'
                 }}>
-                  <Plus size={16} /> Report New Issue
+                  <Plus size={16} /> Report an issue
                 </button>
               </Link>
             )}
@@ -386,19 +387,19 @@ function Dashboard() {
         {/* Error Banner */}
         {error && (
           <div style={{
-            background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px',
+            background: '#fff4ed', border: '1px solid #f8d3bf', borderRadius: '8px',
             padding: '16px 20px', marginBottom: '24px',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
             flexWrap: 'wrap'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <AlertCircle size={20} color="#ef4444" />
+              <AlertCircle size={20} color="#c2410c" />
               <span style={{ color: '#991b1b', fontSize: '14px', fontWeight: '500' }}>{error}</span>
             </div>
             <button
               onClick={() => fetchComplaints()}
               style={{
-                background: '#ef4444', color: 'white', border: 'none',
+                background: '#c2410c', color: 'white', border: 'none',
                 borderRadius: '6px', padding: '6px 14px', fontSize: '13px',
                 fontWeight: '600', cursor: 'pointer'
               }}
@@ -416,22 +417,22 @@ function Dashboard() {
           marginBottom: '32px'
         }}>
           {[
-            { label: 'Total Reports', count: stats.total, icon: <List size={22} color="#1a1a1a" />, bg: '#fefde8' },
-            { label: 'Open Issues', count: stats.open, icon: <AlertOctagon size={22} color="#1a1a1a" />, bg: '#fde8e8' },
-            { label: 'In Progress', count: stats.in_progress, icon: <Wrench size={22} color="#1a1a1a" />, bg: '#fde8d8' },
-            { label: 'Resolved', count: stats.resolved, icon: <CheckSquare size={22} color="#1a1a1a" />, bg: '#e8fdf0' },
+            { label: 'Total Reports', count: stats.total, icon: <List size={18} color="#66665f" />, bg: '#ffffff' },
+            { label: 'Open Issues', count: stats.open, icon: <AlertOctagon size={18} color="#66665f" />, bg: '#ffffff' },
+            { label: 'In Progress', count: stats.in_progress, icon: <Wrench size={18} color="#66665f" />, bg: '#ffffff' },
+            { label: 'Resolved', count: stats.resolved, icon: <CheckSquare size={18} color="#66665f" />, bg: '#ffffff' },
           ].map(s => (
             <div key={s.label} style={{
               background: s.bg,
-              border: '1px solid rgba(0,0,0,0.06)',
-              borderRadius: '20px', padding: '24px',
+              border: '1px solid #e3e2dc',
+              borderRadius: '8px', padding: '20px',
               display: 'flex', flexDirection: 'column', gap: '12px'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '14px', fontWeight: '700', color: '#1a1a1a' }}>{s.label}</span>
+                <span style={{ fontSize: '13px', fontWeight: '500', color: '#66665f' }}>{s.label}</span>
                 {s.icon}
               </div>
-              <div style={{ fontSize: '38px', fontWeight: '800', color: '#1a1a1a', lineHeight: 1 }}>
+              <div style={{ fontSize: '30px', fontWeight: '700', color: '#1c1c1a', lineHeight: 1 }}>
                 {s.count}
               </div>
             </div>
@@ -440,7 +441,7 @@ function Dashboard() {
 
         {/* Filter Tabs */}
         <div style={{
-          borderBottom: '1px solid #e2e8f0', marginBottom: '24px',
+          borderBottom: '1px solid #e3e2dc', marginBottom: '24px',
           display: 'flex', gap: '20px', overflowX: 'auto'
         }}>
           {[
@@ -455,8 +456,8 @@ function Dashboard() {
               style={{
                 background: 'none', border: 'none',
                 padding: '12px 4px',
-                borderBottom: filter === tab.key ? '2px solid #0f172a' : '2px solid transparent',
-                color: filter === tab.key ? '#0f172a' : '#64748b',
+                borderBottom: filter === tab.key ? '2px solid #1c1c1a' : '2px solid transparent',
+                color: filter === tab.key ? '#1c1c1a' : '#66665f',
                 cursor: 'pointer', fontSize: '14px', fontWeight: '600', transition: 'all 0.2s',
                 marginBottom: '-1px', display: 'flex', alignItems: 'center', gap: '8px',
                 whiteSpace: 'nowrap'
@@ -467,8 +468,8 @@ function Dashboard() {
                 fontSize: '11px',
                 padding: '2px 7px',
                 borderRadius: '10px',
-                background: filter === tab.key ? '#0f172a' : '#f1f5f9',
-                color: filter === tab.key ? 'white' : '#64748b'
+                background: filter === tab.key ? '#1c1c1a' : '#f1f1ee',
+                color: filter === tab.key ? 'white' : '#66665f'
               }}>
                 {tab.count}
               </span>
@@ -480,13 +481,13 @@ function Dashboard() {
         {loading && complaints.length === 0 ? (
           <div style={{
             textAlign: 'center', padding: '64px 20px',
-            background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px'
+            background: 'white', border: '1px solid #e3e2dc', borderRadius: '8px'
           }}>
-            <RefreshCw size={32} color="#64748b" className="spin" style={{ margin: '0 auto 16px' }} />
-            <h3 style={{ fontSize: '16px', color: '#0f172a', fontWeight: '600', marginBottom: '4px' }}>
+            <RefreshCw size={32} color="#66665f" className="spin" style={{ margin: '0 auto 16px' }} />
+            <h3 style={{ fontSize: '16px', color: '#1c1c1a', fontWeight: '600', marginBottom: '4px' }}>
               Loading complaints...
             </h3>
-            <p style={{ fontSize: '13px', color: '#64748b' }}>
+            <p style={{ fontSize: '13px', color: '#66665f' }}>
               Please wait while we retrieve the latest information.
             </p>
           </div>
@@ -494,21 +495,21 @@ function Dashboard() {
           /* Complaints List View */
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {filtered.map(c => {
-              const sc = statusConfig[c.status] || { color: '#64748b', label: c.status, bg: '#f1f5f9', border: '#e2e8f0' };
+              const sc = statusConfig[c.status] || { color: '#66665f', label: c.status, bg: '#f1f1ee', border: '#e3e2dc' };
 
               return (
                 <div key={c.id} className="dash-card" style={{
                   background: 'white',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '16px', padding: '24px',
+                  border: '1px solid #e3e2dc',
+                  borderRadius: '8px', padding: '24px',
                   display: 'flex', gap: '20px', alignItems: 'flex-start',
                   boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
                   transition: 'all 0.2s'
                 }}>
                   {/* Category Icon */}
                   <div className="dash-cat-icon" style={{
-                    background: '#f1f5f9', width: '44px', height: '44px',
-                    borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: '#f1f1ee', width: '44px', height: '44px',
+                    borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center',
                     flexShrink: 0
                   }}>
                     {getCategoryIcon(c.category)}
@@ -521,24 +522,24 @@ function Dashboard() {
                       alignItems: 'flex-start', marginBottom: '8px', flexWrap: 'wrap', gap: '8px'
                     }}>
                       <div>
-                        <h3 style={{ fontSize: '17px', fontWeight: '700', color: '#0f172a', margin: 0 }}>
+                        <h3 style={{ fontSize: '17px', fontWeight: '700', color: '#1c1c1a', margin: 0 }}>
                           {c.category}
                         </h3>
 
                         {/* Metadata Row */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '6px', flexWrap: 'wrap' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px', color: '#64748b' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px', color: '#66665f' }}>
                             <CalendarDays size={14} />
                             {formatDate(c.created_at)}
                           </div>
                           {c.address && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px', color: '#64748b' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px', color: '#66665f' }}>
                               <MapPin size={14} />
                               {c.address}
                             </div>
                           )}
                           {c.citizen_name && user.role !== 'citizen' && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px', color: '#64748b' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px', color: '#66665f' }}>
                               <User size={14} />
                               Reported by {c.citizen_name}
                             </div>
@@ -553,9 +554,9 @@ function Dashboard() {
                           <div style={{
                             display: 'inline-flex', alignItems: 'center', gap: '5px',
                             padding: '4px 10px', borderRadius: '100px', fontSize: '11px', fontWeight: '700',
-                            background: c.citizen_confirmation_status === 'confirmed' ? '#f0fdf4' : c.citizen_confirmation_status === 'reopened' ? '#fef2f2' : '#fffbeb',
-                            color: c.citizen_confirmation_status === 'confirmed' ? '#16a34a' : c.citizen_confirmation_status === 'reopened' ? '#dc2626' : '#d97706',
-                            border: `1px solid ${c.citizen_confirmation_status === 'confirmed' ? '#bbf7d0' : c.citizen_confirmation_status === 'reopened' ? '#fecaca' : '#fde68a'}`
+                            background: c.citizen_confirmation_status === 'confirmed' ? '#f0fdf4' : c.citizen_confirmation_status === 'reopened' ? '#fff4ed' : '#fefbe8',
+                            color: c.citizen_confirmation_status === 'confirmed' ? '#15803d' : c.citizen_confirmation_status === 'reopened' ? '#dc2626' : '#d97706',
+                            border: `1px solid ${c.citizen_confirmation_status === 'confirmed' ? '#bbf7d0' : c.citizen_confirmation_status === 'reopened' ? '#f8d3bf' : '#f3e3a3'}`
                           }}>
                             {c.citizen_confirmation_status === 'confirmed' ? <CheckCircle size={12} /> : c.citizen_confirmation_status === 'reopened' ? <AlertTriangle size={12} /> : <Clock size={12} />}
                             {c.citizen_confirmation_status === 'confirmed' ? 'Citizen Confirmed' : c.citizen_confirmation_status === 'reopened' ? 'Citizen Reopened' : 'Confirmation Pending'}
@@ -577,15 +578,15 @@ function Dashboard() {
                     </div>
 
                     {/* Complaint Description */}
-                    <p style={{ color: '#475569', fontSize: '14px', lineHeight: 1.5, margin: '12px 0' }}>
+                    <p style={{ color: '#4d4d48', fontSize: '14px', lineHeight: 1.5, margin: '12px 0' }}>
                       {c.description}
                     </p>
 
                     {/* Citizen Reopening Attention Banner (for staff) */}
                     {c.citizen_confirmation_status === 'reopened' && user.role !== 'citizen' && (
                       <div style={{
-                        background: '#fef2f2',
-                        border: '1px solid #fecaca',
+                        background: '#fff4ed',
+                        border: '1px solid #f8d3bf',
                         borderRadius: '10px',
                         padding: '12px 14px',
                         margin: '12px 0',
@@ -616,7 +617,7 @@ function Dashboard() {
                       }}>
                         {c.image_url && (
                           <div style={{ flex: '1 1 180px', maxWidth: '240px' }}>
-                            <div style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', marginBottom: '6px' }}>
+                            <div style={{ fontSize: '12px', fontWeight: '700', color: '#66665f', marginBottom: '6px' }}>
                               Original Evidence (Before)
                             </div>
                             <a href={getImageUrl(c.image_url)} target="_blank" rel="noopener noreferrer">
@@ -625,7 +626,7 @@ function Dashboard() {
                                 alt="Original complaint evidence"
                                 style={{
                                   width: '100%', height: '110px', objectFit: 'cover',
-                                  borderRadius: '8px', border: '1px solid #e2e8f0'
+                                  borderRadius: '8px', border: '1px solid #e3e2dc'
                                 }}
                               />
                             </a>
@@ -634,7 +635,7 @@ function Dashboard() {
 
                         {c.resolution_image_url && (
                           <div style={{ flex: '1 1 180px', maxWidth: '240px' }}>
-                            <div style={{ fontSize: '12px', fontWeight: '700', color: '#16a34a', marginBottom: '6px' }}>
+                            <div style={{ fontSize: '12px', fontWeight: '700', color: '#15803d', marginBottom: '6px' }}>
                               Resolution Proof (After)
                             </div>
                             <a href={getImageUrl(c.resolution_image_url)} target="_blank" rel="noopener noreferrer">
@@ -655,15 +656,15 @@ function Dashboard() {
                     {/* Resolution Notes Display */}
                     {c.resolution_notes && (
                       <div style={{
-                        background: '#f8fafc',
-                        border: '1px solid #e2e8f0',
+                        background: '#f8f8f6',
+                        border: '1px solid #e3e2dc',
                         borderRadius: '8px',
                         padding: '10px 14px',
                         margin: '12px 0',
                         fontSize: '13px',
-                        color: '#334155'
+                        color: '#3a3a36'
                       }}>
-                        <span style={{ fontWeight: '700', color: '#0f172a' }}>Staff Resolution Notes: </span>
+                        <span style={{ fontWeight: '700', color: '#1c1c1a' }}>Staff Resolution Notes: </span>
                         {c.resolution_notes}
                       </div>
                     )}
@@ -678,7 +679,7 @@ function Dashboard() {
                           background: '#f0fdf4',
                           border: '1px solid #bbf7d0'
                         }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#16a34a', fontSize: '13px', fontWeight: '600' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#15803d', fontSize: '13px', fontWeight: '600' }}>
                             <CheckCircle size={16} />
                             You confirmed this issue was resolved successfully. Thank you for helping improve our community!
                           </div>
@@ -688,8 +689,8 @@ function Dashboard() {
                           marginTop: '16px',
                           padding: '14px 16px',
                           borderRadius: '10px',
-                          background: '#fef2f2',
-                          border: '1px solid #fecaca'
+                          background: '#fff4ed',
+                          border: '1px solid #f8d3bf'
                         }}>
                           <div style={{ fontSize: '13px', color: '#991b1b' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '700' }}>
@@ -727,7 +728,7 @@ function Dashboard() {
                                     width: '100%',
                                     padding: '10px',
                                     borderRadius: '8px',
-                                    border: '1px solid #cbd5e1',
+                                    border: '1px solid #d4d3cc',
                                     fontSize: '13px',
                                     marginBottom: '10px',
                                     fontFamily: 'inherit',
@@ -756,8 +757,8 @@ function Dashboard() {
                                     style={{
                                       padding: '8px 16px',
                                       background: 'transparent',
-                                      color: '#64748b',
-                                      border: '1px solid #cbd5e1',
+                                      color: '#66665f',
+                                      border: '1px solid #d4d3cc',
                                       borderRadius: '6px',
                                       fontSize: '13px',
                                       cursor: 'pointer'
@@ -777,7 +778,7 @@ function Dashboard() {
                                     alignItems: 'center',
                                     gap: '6px',
                                     padding: '8px 16px',
-                                    background: '#16a34a',
+                                    background: '#15803d',
                                     color: 'white',
                                     border: 'none',
                                     borderRadius: '6px',
@@ -798,7 +799,7 @@ function Dashboard() {
                                     padding: '8px 16px',
                                     background: 'white',
                                     color: '#dc2626',
-                                    border: '1px solid #fecaca',
+                                    border: '1px solid #f8d3bf',
                                     borderRadius: '6px',
                                     fontSize: '13px',
                                     fontWeight: '600',
@@ -818,14 +819,14 @@ function Dashboard() {
                     <div style={{
                       marginTop: '16px',
                       padding: '16px',
-                      background: '#f8fafc',
-                      borderRadius: '12px',
-                      border: '1px solid #e2e8f0'
+                      background: '#f8f8f6',
+                      borderRadius: '8px',
+                      border: '1px solid #e3e2dc'
                     }}>
                       <div style={{
                         fontSize: '11px',
                         fontWeight: '700',
-                        color: '#64748b',
+                        color: '#66665f',
                         textTransform: 'uppercase',
                         letterSpacing: '0.5px',
                         marginBottom: '14px'
@@ -843,14 +844,14 @@ function Dashboard() {
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, textAlign: 'center', zIndex: 1 }}>
                           <div style={{
                             width: '28px', height: '28px', borderRadius: '50%',
-                            background: '#22c55e', color: 'white',
+                            background: '#15803d', color: 'white',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             marginBottom: '6px'
                           }}>
                             <Check size={16} strokeWidth={3} />
                           </div>
-                          <span style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>Reported</span>
-                          <span style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                          <span style={{ fontSize: '13px', fontWeight: '600', color: '#1c1c1a' }}>Reported</span>
+                          <span style={{ fontSize: '11px', color: '#66665f', marginTop: '2px' }}>
                             {formatDate(c.created_at) || 'Submitted'}
                           </span>
                         </div>
@@ -858,7 +859,7 @@ function Dashboard() {
                         {/* Progress Bar 1 */}
                         <div style={{
                           flex: 1, height: '3px',
-                          background: c.status === 'in_progress' || c.status === 'resolved' ? '#22c55e' : '#cbd5e1',
+                          background: c.status === 'in_progress' || c.status === 'resolved' ? '#15803d' : '#d4d3cc',
                           marginTop: '13px', marginInline: '-6px', zIndex: 0
                         }} />
 
@@ -867,11 +868,11 @@ function Dashboard() {
                           <div style={{
                             width: '28px', height: '28px', borderRadius: '50%',
                             background: c.status === 'resolved'
-                              ? '#22c55e'
+                              ? '#15803d'
                               : c.status === 'in_progress'
-                                ? '#f59e0b'
-                                : '#e2e8f0',
-                            color: c.status === 'resolved' || c.status === 'in_progress' ? 'white' : '#94a3b8',
+                                ? '#a16207'
+                                : '#e3e2dc',
+                            color: c.status === 'resolved' || c.status === 'in_progress' ? 'white' : '#8f8e86',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             marginBottom: '6px'
                           }}>
@@ -880,11 +881,11 @@ function Dashboard() {
                           <span style={{
                             fontSize: '13px',
                             fontWeight: '600',
-                            color: c.status === 'in_progress' ? '#b45309' : c.status === 'resolved' ? '#0f172a' : '#64748b'
+                            color: c.status === 'in_progress' ? '#b45309' : c.status === 'resolved' ? '#1c1c1a' : '#66665f'
                           }}>
                             In Progress
                           </span>
-                          <span style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                          <span style={{ fontSize: '11px', color: '#66665f', marginTop: '2px' }}>
                             {c.worker_name ? `Worker: ${c.worker_name}` : (c.status === 'open' ? 'Awaiting assignment' : 'Under work')}
                           </span>
                         </div>
@@ -892,7 +893,7 @@ function Dashboard() {
                         {/* Progress Bar 2 */}
                         <div style={{
                           flex: 1, height: '3px',
-                          background: c.status === 'resolved' ? '#22c55e' : '#cbd5e1',
+                          background: c.status === 'resolved' ? '#15803d' : '#d4d3cc',
                           marginTop: '13px', marginInline: '-6px', zIndex: 0
                         }} />
 
@@ -900,8 +901,8 @@ function Dashboard() {
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, textAlign: 'center', zIndex: 1 }}>
                           <div style={{
                             width: '28px', height: '28px', borderRadius: '50%',
-                            background: c.status === 'resolved' ? '#22c55e' : '#e2e8f0',
-                            color: c.status === 'resolved' ? 'white' : '#94a3b8',
+                            background: c.status === 'resolved' ? '#15803d' : '#e3e2dc',
+                            color: c.status === 'resolved' ? 'white' : '#8f8e86',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             marginBottom: '6px'
                           }}>
@@ -910,11 +911,11 @@ function Dashboard() {
                           <span style={{
                             fontSize: '13px',
                             fontWeight: '600',
-                            color: c.status === 'resolved' ? '#15803d' : '#64748b'
+                            color: c.status === 'resolved' ? '#15803d' : '#66665f'
                           }}>
                             {c.status === 'resolved' && c.citizen_confirmation_status === 'confirmed' ? 'Verified Fixed' : 'Resolved'}
                           </span>
-                          <span style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                          <span style={{ fontSize: '11px', color: '#66665f', marginTop: '2px' }}>
                             {c.status === 'resolved'
                               ? (c.resolved_at ? formatDate(c.resolved_at) : 'Completed')
                               : 'Pending completion'}
@@ -926,7 +927,7 @@ function Dashboard() {
                     {/* Action & Assignment Management Row */}
                     <div style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      paddingTop: '16px', borderTop: '1px solid #f1f5f9', marginTop: '16px',
+                      paddingTop: '16px', borderTop: '1px solid #f1f1ee', marginTop: '16px',
                       flexWrap: 'wrap', gap: '10px'
                     }}>
                       {/* Left: Assignment Information */}
@@ -934,19 +935,19 @@ function Dashboard() {
                         {c.worker_name ? (
                           <div style={{
                             display: 'flex', alignItems: 'center', gap: '6px',
-                            fontSize: '13px', color: '#334155', background: '#f8fafc',
-                            padding: '4px 10px', borderRadius: '6px', border: '1px solid #e2e8f0'
+                            fontSize: '13px', color: '#3a3a36', background: '#f8f8f6',
+                            padding: '4px 10px', borderRadius: '6px', border: '1px solid #e3e2dc'
                           }}>
-                            <HardHat size={14} color="#64748b" />
+                            <HardHat size={14} color="#66665f" />
                             Assigned to <span style={{ fontWeight: '600' }}>{c.worker_name}</span>
                           </div>
                         ) : (
                           c.status !== 'resolved' ? (
                             <div style={{
                               display: 'flex', alignItems: 'center', gap: '6px',
-                              fontSize: '13px', color: user.role === 'officer' ? '#ef4444' : '#64748b'
+                              fontSize: '13px', color: user.role === 'officer' ? '#c2410c' : '#66665f'
                             }}>
-                              <AlertTriangle size={14} color={user.role === 'officer' ? '#ef4444' : '#64748b'} />
+                              <AlertTriangle size={14} color={user.role === 'officer' ? '#c2410c' : '#66665f'} />
                               {user.role === 'officer' ? 'Unassigned' : 'Awaiting worker assignment'}
                             </div>
                           ) : null
@@ -963,7 +964,7 @@ function Dashboard() {
                                 value={selectedWorker[c.id] || ''}
                                 onChange={e => setSelectedWorker({ ...selectedWorker, [c.id]: e.target.value })}
                                 style={{
-                                  padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1',
+                                  padding: '6px 12px', borderRadius: '6px', border: '1px solid #d4d3cc',
                                   fontSize: '13px', outline: 'none', background: 'white', margin: 0, width: '160px'
                                 }}
                               >
@@ -971,11 +972,11 @@ function Dashboard() {
                                 {workers.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
                               </select>
                               <button onClick={() => assignWorker(c.id)} style={{
-                                padding: '7px 12px', background: '#0f172a', color: 'white',
+                                padding: '7px 12px', background: '#1c1c1a', color: 'white',
                                 border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600'
                               }}>Save</button>
                               <button onClick={() => setAssigningId(null)} style={{
-                                padding: '7px', background: 'transparent', color: '#64748b',
+                                padding: '7px', background: 'transparent', color: '#66665f',
                                 border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center'
                               }}><XCircle size={18} /></button>
                             </div>
@@ -983,7 +984,7 @@ function Dashboard() {
                             <button onClick={() => setAssigningId(c.id)} style={{
                               display: 'flex', alignItems: 'center', gap: '6px',
                               padding: '6px 12px', background: 'transparent',
-                              color: '#0f172a', border: '1px solid #cbd5e1',
+                              color: '#1c1c1a', border: '1px solid #d4d3cc',
                               borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600'
                             }}>
                               {c.assigned_to ? <RefreshCw size={14} /> : <UserPlus size={14} />}
@@ -996,7 +997,7 @@ function Dashboard() {
                         {user.role === 'officer' && c.status === 'open' && (
                           <button onClick={() => updateStatus(c.id, 'in_progress')} style={{
                             display: 'flex', alignItems: 'center', gap: '6px',
-                            padding: '6px 12px', background: '#0f172a', color: 'white', border: 'none',
+                            padding: '6px 12px', background: '#1c1c1a', color: 'white', border: 'none',
                             borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600'
                           }}>
                             <Play size={14} /> Start Task
@@ -1015,7 +1016,7 @@ function Dashboard() {
                             }}
                             style={{
                               display: 'flex', alignItems: 'center', gap: '6px',
-                              padding: '7px 14px', background: '#16a34a', color: 'white', border: 'none',
+                              padding: '7px 14px', background: '#15803d', color: 'white', border: 'none',
                               borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600'
                             }}
                           >
@@ -1025,7 +1026,7 @@ function Dashboard() {
 
                         {/* Worker: Open Task Notice */}
                         {user.role === 'worker' && c.status === 'open' && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '13px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#66665f', fontSize: '13px' }}>
                             <Clock size={14} /> Pending Assignment
                           </div>
                         )}
@@ -1033,7 +1034,7 @@ function Dashboard() {
                         {/* Citizen: Read-Only Status Indicator */}
                         {user.role === 'citizen' && (
                           c.status === 'resolved' ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#16a34a', fontSize: '13px', fontWeight: '600' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#15803d', fontSize: '13px', fontWeight: '600' }}>
                               <CheckCircle size={15} /> Issue Resolved
                             </div>
                           ) : c.status === 'in_progress' ? (
@@ -1041,7 +1042,7 @@ function Dashboard() {
                               <Wrench size={15} /> In Progress
                             </div>
                           ) : (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '13px', fontWeight: '500' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#66665f', fontSize: '13px', fontWeight: '500' }}>
                               <Clock size={15} /> Awaiting Review
                             </div>
                           )
@@ -1059,25 +1060,25 @@ function Dashboard() {
                 filter === 'all' ? (
                   <div style={{
                     textAlign: 'center', padding: '64px 20px',
-                    background: 'white', border: '1px dashed #cbd5e1', borderRadius: '16px'
+                    background: 'white', border: '1px dashed #d4d3cc', borderRadius: '8px'
                   }}>
                     <div style={{
                       width: '64px', height: '64px', borderRadius: '50%',
                       background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center',
                       margin: '0 auto 16px'
                     }}>
-                      <Inbox size={32} color="#3b82f6" />
+                      <Inbox size={32} color="#2f5fc4" />
                     </div>
-                    <h3 style={{ fontSize: '18px', color: '#0f172a', fontWeight: '700', marginBottom: '8px' }}>
+                    <h3 style={{ fontSize: '18px', color: '#1c1c1a', fontWeight: '700', marginBottom: '8px' }}>
                       You haven't reported any issues yet
                     </h3>
-                    <p style={{ fontSize: '14px', color: '#64748b', maxWidth: '400px', margin: '0 auto 20px', lineHeight: 1.5 }}>
+                    <p style={{ fontSize: '14px', color: '#66665f', maxWidth: '400px', margin: '0 auto 20px', lineHeight: 1.5 }}>
                       Notice a pothole, broken streetlight, or garbage dump in your area? Submit a complaint to alert your local civic authorities.
                     </p>
                     <Link to="/report" style={{ textDecoration: 'none' }}>
                       <button style={{
                         display: 'inline-flex', alignItems: 'center', gap: '8px',
-                        padding: '10px 22px', background: '#ef4444', color: 'white',
+                        padding: '10px 22px', background: '#c2410c', color: 'white',
                         border: 'none', borderRadius: '100px', fontSize: '14px', fontWeight: '600',
                         cursor: 'pointer', boxShadow: '0 2px 6px rgba(239,68,68,0.25)'
                       }}>
@@ -1088,25 +1089,25 @@ function Dashboard() {
                 ) : (
                   <div style={{
                     textAlign: 'center', padding: '64px 20px',
-                    background: 'white', border: '1px dashed #cbd5e1', borderRadius: '16px'
+                    background: 'white', border: '1px dashed #d4d3cc', borderRadius: '8px'
                   }}>
                     <div style={{
                       width: '64px', height: '64px', borderRadius: '50%',
-                      background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: '#f8f8f6', display: 'flex', alignItems: 'center', justifyContent: 'center',
                       margin: '0 auto 16px'
                     }}>
-                      <Inbox size={32} color="#94a3b8" />
+                      <Inbox size={32} color="#8f8e86" />
                     </div>
-                    <h3 style={{ fontSize: '18px', color: '#0f172a', fontWeight: '700', marginBottom: '8px' }}>
+                    <h3 style={{ fontSize: '18px', color: '#1c1c1a', fontWeight: '700', marginBottom: '8px' }}>
                       No {statusConfig[filter]?.label || filter} complaints
                     </h3>
-                    <p style={{ fontSize: '14px', color: '#64748b', maxWidth: '380px', margin: '0 auto 16px' }}>
+                    <p style={{ fontSize: '14px', color: '#66665f', maxWidth: '380px', margin: '0 auto 16px' }}>
                       You don't have any reports currently matching this status filter.
                     </p>
                     <button
                       onClick={() => setFilter('all')}
                       style={{
-                        padding: '8px 18px', background: '#0f172a', color: 'white',
+                        padding: '8px 18px', background: '#1c1c1a', color: 'white',
                         border: 'none', borderRadius: '100px', fontSize: '13px', fontWeight: '600', cursor: 'pointer'
                       }}
                     >
@@ -1117,18 +1118,18 @@ function Dashboard() {
               ) : (
                 <div style={{
                   textAlign: 'center', padding: '80px 20px',
-                  background: 'white', border: '1px dashed #cbd5e1', borderRadius: '12px'
+                  background: 'white', border: '1px dashed #d4d3cc', borderRadius: '8px'
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
                     {user.role === 'worker'
-                      ? <PartyPopper size={48} color="#94a3b8" strokeWidth={1.5} />
-                      : <Inbox size={48} color="#94a3b8" strokeWidth={1.5} />
+                      ? <PartyPopper size={48} color="#8f8e86" strokeWidth={1.5} />
+                      : <Inbox size={48} color="#8f8e86" strokeWidth={1.5} />
                     }
                   </div>
-                  <h3 style={{ fontSize: '18px', color: '#0f172a', fontWeight: '600', marginBottom: '6px' }}>
+                  <h3 style={{ fontSize: '18px', color: '#1c1c1a', fontWeight: '600', marginBottom: '6px' }}>
                     {user.role === 'worker' ? "You're all caught up!" : 'Inbox Zero'}
                   </h3>
-                  <p style={{ fontSize: '14px', color: '#64748b', maxWidth: '300px', margin: '0 auto' }}>
+                  <p style={{ fontSize: '14px', color: '#66665f', maxWidth: '300px', margin: '0 auto' }}>
                     {user.role === 'worker'
                       ? 'No tasks assigned to you right now. Take a breather.'
                       : 'There are no complaints matching this filter.'}
@@ -1153,7 +1154,7 @@ function Dashboard() {
           }}>
             <div style={{
               background: 'white',
-              borderRadius: '16px',
+              borderRadius: '8px',
               maxWidth: '520px',
               width: '100%',
               padding: '28px',
@@ -1163,17 +1164,17 @@ function Dashboard() {
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <div>
-                  <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                  <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#1c1c1a', margin: 0 }}>
                     Submit Resolution Evidence
                   </h3>
-                  <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 0' }}>
+                  <p style={{ fontSize: '13px', color: '#66665f', margin: '4px 0 0' }}>
                     Complaint #{resolvingComplaint.id}: {resolvingComplaint.category}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={closeResolutionModal}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8f8e86' }}
                 >
                   <XCircle size={22} />
                 </button>
@@ -1181,8 +1182,8 @@ function Dashboard() {
 
               {resolutionError && (
                 <div style={{
-                  background: '#fef2f2',
-                  border: '1px solid #fecaca',
+                  background: '#fff4ed',
+                  border: '1px solid #f8d3bf',
                   borderRadius: '8px',
                   padding: '10px 14px',
                   color: '#dc2626',
@@ -1195,10 +1196,10 @@ function Dashboard() {
 
               <form onSubmit={submitResolution}>
                 <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
-                    Resolution Photograph <span style={{ color: '#ef4444' }}>* (Required)</span>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#3a3a36', marginBottom: '6px' }}>
+                    Resolution Photograph <span style={{ color: '#c2410c' }}>* (Required)</span>
                   </label>
-                  <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 8px' }}>
+                  <p style={{ fontSize: '12px', color: '#66665f', margin: '0 0 8px' }}>
                     Upload an after-completion photograph (JPEG, PNG, WebP up to 5 MB).
                   </p>
                   <input
@@ -1211,7 +1212,7 @@ function Dashboard() {
                       width: '100%',
                       fontSize: '13px',
                       padding: '8px 12px',
-                      border: '1px solid #cbd5e1',
+                      border: '1px solid #d4d3cc',
                       borderRadius: '8px',
                       boxSizing: 'border-box'
                     }}
@@ -1221,15 +1222,15 @@ function Dashboard() {
                       <img
                         src={resolutionFilePreview}
                         alt="Resolution preview"
-                        style={{ height: '120px', width: 'auto', borderRadius: '8px', border: '1px solid #e2e8f0', objectFit: 'cover' }}
+                        style={{ height: '120px', width: 'auto', borderRadius: '8px', border: '1px solid #e3e2dc', objectFit: 'cover' }}
                       />
                     </div>
                   )}
                 </div>
 
                 <div style={{ marginBottom: '20px' }}>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
-                    Resolution Notes <span style={{ color: '#94a3b8', fontWeight: '400' }}>(Optional)</span>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#3a3a36', marginBottom: '6px' }}>
+                    Resolution Notes <span style={{ color: '#8f8e86', fontWeight: '400' }}>(Optional)</span>
                   </label>
                   <textarea
                     value={resolutionNotes}
@@ -1240,7 +1241,7 @@ function Dashboard() {
                       width: '100%',
                       padding: '10px 12px',
                       borderRadius: '8px',
-                      border: '1px solid #cbd5e1',
+                      border: '1px solid #d4d3cc',
                       fontSize: '13px',
                       boxSizing: 'border-box',
                       fontFamily: 'inherit'
@@ -1255,11 +1256,11 @@ function Dashboard() {
                     style={{
                       padding: '9px 18px',
                       background: 'transparent',
-                      border: '1px solid #cbd5e1',
+                      border: '1px solid #d4d3cc',
                       borderRadius: '8px',
                       fontSize: '13px',
                       fontWeight: '600',
-                      color: '#64748b',
+                      color: '#66665f',
                       cursor: 'pointer'
                     }}
                   >
@@ -1273,7 +1274,7 @@ function Dashboard() {
                       alignItems: 'center',
                       gap: '6px',
                       padding: '9px 20px',
-                      background: '#16a34a',
+                      background: '#15803d',
                       border: 'none',
                       borderRadius: '8px',
                       fontSize: '13px',

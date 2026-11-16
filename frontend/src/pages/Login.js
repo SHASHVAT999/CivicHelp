@@ -34,7 +34,7 @@ function Login() {
       if (isRegister) {
         setIsRegister(false);
         setForm({ name: '', email: payload.email, password: '' });
-        setInfo('Account created! Please log in with your new credentials.');
+        setInfo('Account created. You can log in now.');
       } else {
         localStorage.setItem('token', res.data.token);
         localStorage.setItem('user', JSON.stringify(res.data.user));
@@ -48,79 +48,47 @@ function Login() {
   };
 
   return (
-    <div style={{
-      minHeight: 'calc(100vh - 64px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: '#fafaf8',
-      padding: '20px'
-    }}>
-      <div style={{ width: '100%', maxWidth: '420px' }}>
-        {/* Header */}
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div style={{
-            width: '56px', height: '56px',
-            background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
-            borderRadius: '16px', margin: '0 auto 16px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '24px', fontWeight: '800', color: 'white'
-          }}>C</div>
-          <h1 style={{ fontSize: '24px', fontWeight: '700', color: '#1a1a1a', marginBottom: '8px' }}>
-            {isRegister ? 'Create your account' : 'Welcome back'}
-          </h1>
-          <p style={{ color: '#666', fontSize: '14px' }}>
-            {isRegister ? 'Join CivicHelp to report civic issues' : 'Login to your CivicHelp account'}
-          </p>
-        </div>
+    <div className="auth-page">
+      <div className="auth-box">
+        <h1 className="page-title">{isRegister ? 'Create an account' : 'Log in'}</h1>
+        <p className="muted page-sub">
+          {isRegister
+            ? 'Citizen accounts can report issues and follow them. Staff accounts are created by the administrator.'
+            : 'Citizens, ward officers and field workers all log in here.'}
+        </p>
 
-        {/* Card */}
-        <div style={{
-          background: 'white',
-          border: '1px solid #e8e8e8',
-          borderRadius: '20px', padding: '32px',
-          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)'
-        }}>
+        <div className="card">
           {info && <div className="success">{info}</div>}
-          {error && <div className="error">{error}</div>}
+          {error && <div className="error" role="alert">{error}</div>}
           <form onSubmit={handleSubmit}>
             {isRegister && (
               <>
-                <label>Full Name</label>
-                <input type="text" placeholder="Your full name" required
+                <label htmlFor="name">Full name</label>
+                <input id="name" type="text" required autoComplete="name"
                   value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
               </>
             )}
-            <label>Email Address</label>
-            <input type="email" placeholder="your@email.com" required
+            <label htmlFor="email">Email</label>
+            <input id="email" type="email" required autoComplete="email"
               value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
-            <label>Password</label>
-            <input type="password" placeholder={isRegister ? 'At least 6 characters' : '••••••••'} required
+            <label htmlFor="password">Password</label>
+            <input id="password" type="password" required
+              placeholder={isRegister ? 'At least 6 characters' : ''}
               minLength={isRegister ? 6 : undefined}
               autoComplete={isRegister ? 'new-password' : 'current-password'}
               value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
-            <button type="submit" disabled={loading} style={{
-              width: '100%', padding: '13px',
-              background: loading ? '#334155' : 'linear-gradient(135deg, #3b82f6, #2563eb)',
-              color: 'white', border: 'none', borderRadius: '10px',
-              fontSize: '15px', fontWeight: '600', cursor: loading ? 'not-allowed' : 'pointer',
-              transition: 'all 0.2s', marginTop: '4px'
-            }}>
-              {loading ? 'Please wait...' : isRegister ? 'Create Account' : 'Login'}
+            <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
+              {loading ? 'Please wait...' : isRegister ? 'Create account' : 'Log in'}
             </button>
           </form>
 
-          <div style={{
-            marginTop: '24px', paddingTop: '24px',
-            borderTop: '1px solid #e8e8e8',
-            textAlign: 'center', fontSize: '14px', color: '#666'
-          }}>
-            {isRegister ? 'Already have an account?' : "Don't have an account?"}
-            <button type="button" onClick={() => { setIsRegister(!isRegister); setError(''); setInfo(''); }} style={{
-              background: 'none', border: 'none', color: '#60a5fa',
-              cursor: 'pointer', fontWeight: '600', marginLeft: '6px', fontSize: '14px'
-            }}>
-              {isRegister ? 'Login' : 'Register'}
+          <p className="auth-switch muted">
+            {isRegister ? 'Already have an account?' : 'New to CivicHelp?'}
+            <button type="button" className="link-button"
+              onClick={() => { setIsRegister(!isRegister); setError(''); setInfo(''); }}>
+              {isRegister ? 'Log in' : 'Create a citizen account'}
             </button>
-          </div>
+          </p>
         </div>
       </div>
     </div>

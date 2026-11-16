@@ -9,6 +9,7 @@ import {
   CalendarDays, CheckCircle, XCircle, RefreshCw,
   RotateCcw, Eye, Inbox, Navigation, ChevronRight
 } from 'lucide-react';
+import { CategoryIcon } from '../categories';
 import 'leaflet/dist/leaflet.css';
 
 delete L.Icon.Default.prototype._getIconUrl;
@@ -19,23 +20,15 @@ L.Icon.Default.mergeOptions({
 });
 
 const statusColors = {
-  open: '#ef4444',
-  in_progress: '#f59e0b',
-  resolved: '#22c55e',
+  open: '#c2410c',
+  in_progress: '#a16207',
+  resolved: '#15803d',
 };
 
 const statusConfig = {
-  open: { color: '#ef4444', label: 'Open', bg: '#fef2f2', border: '#fecaca' },
-  in_progress: { color: '#f59e0b', label: 'In Progress', bg: '#fffbeb', border: '#fde68a' },
-  resolved: { color: '#22c55e', label: 'Resolved', bg: '#f0fdf4', border: '#bbf7d0' },
-};
-
-const categoryEmoji = {
-  'Pothole': '🕳️',
-  'Broken Streetlight': '💡',
-  'Garbage Dump': '🗑️',
-  'Open Drain': '🌊',
-  'Other': '📍',
+  open: { color: '#c2410c', label: 'Open', bg: '#fff4ed', border: '#f8d3bf' },
+  in_progress: { color: '#a16207', label: 'In Progress', bg: '#fefbe8', border: '#f3e3a3' },
+  resolved: { color: '#15803d', label: 'Resolved', bg: '#f0fdf4', border: '#bbf7d0' },
 };
 
 const categoryList = [
@@ -51,10 +44,10 @@ function getCategoryIconComponent(category) {
   switch (category) {
     case 'Pothole': return <AlertTriangle size={16} color="#d97706" />;
     case 'Broken Streetlight': return <AlertOctagon size={16} color="#ea580c" />;
-    case 'Garbage Dump': return <Trash2 size={16} color="#475569" />;
+    case 'Garbage Dump': return <Trash2 size={16} color="#4d4d48" />;
     case 'Open Drain': return <Waves size={16} color="#0284c7" />;
     case 'Other':
-    default: return <MapPin size={16} color="#64748b" />;
+    default: return <MapPin size={16} color="#66665f" />;
   }
 }
 
@@ -89,11 +82,11 @@ function parseStrictCoordinates(lat, lng) {
 }
 
 function getIcon(status, isSelected = false) {
-  const color = statusColors[status] || '#ef4444';
+  const color = statusColors[status] || '#c2410c';
   const size = isSelected ? 22 : 16;
   const borderWidth = isSelected ? 3.5 : 2.5;
   const shadow = isSelected
-    ? '0 0 0 5px rgba(59, 130, 246, 0.45), 0 3px 8px rgba(0,0,0,0.4)'
+    ? '0 0 0 5px rgba(36,81,183, 0.45), 0 3px 8px rgba(0,0,0,0.4)'
     : '0 2px 6px rgba(0,0,0,0.35)';
 
   return L.divIcon({
@@ -131,7 +124,7 @@ function getCoordinateKey(lat, lng) {
 }
 
 const SPIDER_LEG_OPTIONS = {
-  color: '#64748b',
+  color: '#66665f',
   weight: 2,
   dashArray: '4, 4',
   opacity: 0.8
@@ -144,7 +137,7 @@ function getClusterIcon(count, isExpanded = false) {
       className: 'custom-civic-cluster-expanded',
       html: `
         <div title="Click to collapse (${count} complaints)" style="
-          background: #0f172a;
+          background: #1c1c1a;
           color: white;
           width: ${size}px;
           height: ${size}px;
@@ -172,7 +165,7 @@ function getClusterIcon(count, isExpanded = false) {
     className: 'custom-civic-cluster',
     html: `
       <div title="${count} complaints at this location. Click to expand." style="
-        background: #2563eb;
+        background: #2451b7;
         color: white;
         width: ${size}px;
         height: ${size}px;
@@ -216,7 +209,7 @@ function getRadialOffset(centerLat, centerLng, index, total, map) {
 
 // Individual complaint marker with full popup and selection support
 function ComplaintMarker({ complaint: c, position, isSelected, onSelect }) {
-  const sc = statusConfig[c.status] || { color: '#64748b', label: c.status, bg: '#f1f5f9', border: '#e2e8f0' };
+  const sc = statusConfig[c.status] || { color: '#66665f', label: c.status, bg: '#f1f1ee', border: '#e3e2dc' };
 
   return (
     <Marker
@@ -227,11 +220,11 @@ function ComplaintMarker({ complaint: c, position, isSelected, onSelect }) {
       }}
     >
       <Popup>
-        <div style={{ fontFamily: 'Inter, sans-serif', padding: '4px', minWidth: '220px', maxWidth: '260px' }}>
+        <div style={{ padding: '4px', minWidth: '220px', maxWidth: '260px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '16px' }}>{categoryEmoji[c.category] || '📍'}</span>
-              <strong style={{ fontSize: '14px', color: '#0f172a' }}>{c.category}</strong>
+              <CategoryIcon category={c.category} size={16} />
+              <strong style={{ fontSize: '14px', color: '#1c1c1a' }}>{c.category}</strong>
             </div>
             <span style={{
               display: 'inline-block', padding: '2px 8px', borderRadius: '100px',
@@ -249,34 +242,34 @@ function ComplaintMarker({ complaint: c, position, isSelected, onSelect }) {
                 alt="Complaint evidence preview"
                 style={{
                   width: '100%', height: '100px', objectFit: 'cover',
-                  borderRadius: '8px', border: '1px solid #e2e8f0'
+                  borderRadius: '8px', border: '1px solid #e3e2dc'
                 }}
               />
             </div>
           )}
 
           <p style={{
-            fontSize: '12px', color: '#475569', lineHeight: 1.4,
+            fontSize: '12px', color: '#4d4d48', lineHeight: 1.4,
             marginBottom: '6px', maxHeight: '50px', overflow: 'hidden'
           }}>
             {c.description || 'No description provided.'}
           </p>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#64748b', marginBottom: '6px' }}>
-            <MapPin size={12} color="#ef4444" style={{ flexShrink: 0 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#66665f', marginBottom: '6px' }}>
+            <MapPin size={12} color="#c2410c" style={{ flexShrink: 0 }} />
             <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {c.address || 'Address unavailable'}
             </span>
           </div>
 
-          <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '10px' }}>
+          <div style={{ fontSize: '11px', color: '#8f8e86', marginBottom: '10px' }}>
             Reported: {formatDate(c.created_at)}
           </div>
 
           <button
             onClick={onSelect}
             style={{
-              width: '100%', padding: '6px 12px', background: '#0f172a',
+              width: '100%', padding: '6px 12px', background: '#1c1c1a',
               color: 'white', border: 'none', borderRadius: '6px',
               fontSize: '12px', fontWeight: '600', cursor: 'pointer',
               textAlign: 'center', display: 'flex', alignItems: 'center',
@@ -552,7 +545,7 @@ function MapPage() {
       height: 'calc(100vh - 64px)',
       display: 'flex',
       flexDirection: 'column',
-      background: '#fafaf8',
+      background: '#f7f7f4',
       position: 'relative',
       overflow: 'hidden'
     }}>
@@ -560,7 +553,7 @@ function MapPage() {
       <div style={{
         padding: '14px 24px',
         background: 'white',
-        borderBottom: '1px solid #e2e8f0',
+        borderBottom: '1px solid #e3e2dc',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -575,13 +568,13 @@ function MapPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <div style={{
                 width: '8px', height: '8px', borderRadius: '50%',
-                background: '#22c55e', animation: 'pulse 2s infinite'
+                background: '#15803d', animation: 'pulse 2s infinite'
               }} />
-              <h2 style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+              <h2 style={{ fontSize: '17px', fontWeight: '700', color: '#1c1c1a', margin: 0 }}>
                 Live Complaints Map
               </h2>
             </div>
-            <p style={{ fontSize: '12px', color: '#64748b', margin: '2px 0 0' }}>
+            <p style={{ fontSize: '12px', color: '#66665f', margin: '2px 0 0' }}>
               Showing {filtered.length} of {complaints.length} civic reports
             </p>
           </div>
@@ -590,7 +583,7 @@ function MapPage() {
         {/* Center: Status and Category Filters */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           {/* Status Filter Pills */}
-          <div style={{ display: 'flex', background: '#f1f5f9', padding: '3px', borderRadius: '100px', gap: '2px' }}>
+          <div style={{ display: 'flex', background: '#f1f1ee', padding: '3px', borderRadius: '100px', gap: '2px' }}>
             {[
               { id: 'all', label: 'All', count: stats.total },
               { id: 'open', label: 'Open', count: stats.open },
@@ -608,7 +601,7 @@ function MapPage() {
                   fontSize: '12px',
                   fontWeight: statusFilter === tab.id ? '700' : '500',
                   background: statusFilter === tab.id ? 'white' : 'transparent',
-                  color: statusFilter === tab.id ? '#0f172a' : '#64748b',
+                  color: statusFilter === tab.id ? '#1c1c1a' : '#66665f',
                   boxShadow: statusFilter === tab.id ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
                   transition: 'all 0.15s ease',
                   display: 'flex',
@@ -621,8 +614,8 @@ function MapPage() {
                   fontSize: '10px',
                   padding: '1px 6px',
                   borderRadius: '10px',
-                  background: statusFilter === tab.id ? '#0f172a' : '#e2e8f0',
-                  color: statusFilter === tab.id ? 'white' : '#64748b'
+                  background: statusFilter === tab.id ? '#1c1c1a' : '#e3e2dc',
+                  color: statusFilter === tab.id ? 'white' : '#66665f'
                 }}>
                   {tab.count}
                 </span>
@@ -638,10 +631,10 @@ function MapPage() {
               style={{
                 padding: '6px 12px',
                 borderRadius: '8px',
-                border: '1px solid #cbd5e1',
+                border: '1px solid #d4d3cc',
                 fontSize: '12px',
                 fontWeight: '600',
-                color: '#334155',
+                color: '#3a3a36',
                 background: 'white',
                 outline: 'none',
                 cursor: 'pointer',
@@ -668,9 +661,9 @@ function MapPage() {
                 gap: '5px',
                 padding: '6px 12px',
                 borderRadius: '8px',
-                border: '1px solid #cbd5e1',
+                border: '1px solid #d4d3cc',
                 background: 'white',
-                color: '#64748b',
+                color: '#66665f',
                 fontSize: '12px',
                 fontWeight: '600',
                 cursor: 'pointer',
@@ -693,9 +686,9 @@ function MapPage() {
               gap: '6px',
               padding: '6px 12px',
               borderRadius: '8px',
-              border: '1px solid #cbd5e1',
+              border: '1px solid #d4d3cc',
               background: 'white',
-              color: '#334155',
+              color: '#3a3a36',
               fontSize: '12px',
               fontWeight: '600',
               cursor: loading ? 'not-allowed' : 'pointer'
@@ -713,16 +706,16 @@ function MapPage() {
         {error && (
           <div style={{
             position: 'absolute', top: '16px', left: '50%', transform: 'translateX(-50%)',
-            zIndex: 1000, background: '#fef2f2', border: '1px solid #fecaca',
+            zIndex: 1000, background: '#fff4ed', border: '1px solid #f8d3bf',
             borderRadius: '10px', padding: '10px 18px', display: 'flex', alignItems: 'center',
             gap: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
           }}>
-            <AlertTriangle size={18} color="#ef4444" />
+            <AlertTriangle size={18} color="#c2410c" />
             <span style={{ fontSize: '13px', color: '#991b1b', fontWeight: '500' }}>{error}</span>
             <button
               onClick={fetchComplaints}
               style={{
-                background: '#ef4444', color: 'white', border: 'none',
+                background: '#c2410c', color: 'white', border: 'none',
                 borderRadius: '6px', padding: '4px 10px', fontSize: '12px',
                 fontWeight: '600', cursor: 'pointer'
               }}
@@ -737,22 +730,22 @@ function MapPage() {
           <div style={{
             position: 'absolute', top: '24px', left: '50%', transform: 'translateX(-50%)',
             zIndex: 1000, background: 'rgba(255, 255, 255, 0.96)',
-            backdropFilter: 'blur(8px)', border: '1px solid #e2e8f0',
-            borderRadius: '16px', padding: '24px 32px', textAlign: 'center',
+            backdropFilter: 'blur(8px)', border: '1px solid #e3e2dc',
+            borderRadius: '8px', padding: '24px 32px', textAlign: 'center',
             boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxWidth: '380px'
           }}>
-            <Inbox size={36} color="#94a3b8" style={{ margin: '0 auto 10px' }} />
-            <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a', margin: '0 0 6px' }}>
+            <Inbox size={36} color="#8f8e86" style={{ margin: '0 auto 10px' }} />
+            <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1c1c1a', margin: '0 0 6px' }}>
               No Complaints Found
             </h3>
-            <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 14px' }}>
+            <p style={{ fontSize: '13px', color: '#66665f', margin: '0 0 14px' }}>
               There are no civic reports matching your selected status and category filters.
             </p>
             <button
               onClick={resetFilters}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: '6px',
-                padding: '7px 16px', background: '#0f172a', color: 'white',
+                padding: '7px 16px', background: '#1c1c1a', color: 'white',
                 border: 'none', borderRadius: '100px', fontSize: '12px',
                 fontWeight: '600', cursor: 'pointer'
               }}
@@ -766,12 +759,12 @@ function MapPage() {
         {loading && complaints.length === 0 && (
           <div style={{
             position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)',
-            zIndex: 1000, background: 'white', border: '1px solid #cbd5e1',
+            zIndex: 1000, background: 'white', border: '1px solid #d4d3cc',
             borderRadius: '100px', padding: '8px 20px', display: 'flex', alignItems: 'center',
             gap: '10px', boxShadow: '0 4px 14px rgba(0,0,0,0.1)'
           }}>
-            <RefreshCw size={15} color="#3b82f6" className="spin" />
-            <span style={{ fontSize: '13px', color: '#334155', fontWeight: '600' }}>
+            <RefreshCw size={15} color="#2f5fc4" className="spin" />
+            <span style={{ fontSize: '13px', color: '#3a3a36', fontWeight: '600' }}>
               Loading civic map markers...
             </span>
           </div>
@@ -781,7 +774,7 @@ function MapPage() {
         <div style={{
           position: 'absolute', bottom: '20px', left: '20px', zIndex: 1000,
           background: 'rgba(255, 255, 255, 0.95)', backdropFilter: 'blur(8px)',
-          border: '1px solid rgba(0,0,0,0.08)', borderRadius: '12px',
+          border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px',
           padding: '12px 16px', boxShadow: '0 4px 14px rgba(0,0,0,0.08)',
           maxWidth: '220px'
         }}>
@@ -792,10 +785,10 @@ function MapPage() {
               cursor: 'pointer', userSelect: 'none'
             }}
           >
-            <span style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            <span style={{ fontSize: '12px', fontWeight: '700', color: '#1c1c1a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Status Legend
             </span>
-            <span style={{ fontSize: '11px', color: '#64748b' }}>
+            <span style={{ fontSize: '11px', color: '#66665f' }}>
               {isLegendOpen ? 'Hide' : 'Show'}
             </span>
           </div>
@@ -803,27 +796,27 @@ function MapPage() {
           {isLegendOpen && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#ef4444', border: '2px solid white', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
-                <span style={{ fontSize: '12px', color: '#334155' }}>Open Issue</span>
+                <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#c2410c', border: '2px solid white', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                <span style={{ fontSize: '12px', color: '#3a3a36' }}>Open Issue</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#f59e0b', border: '2px solid white', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
-                <span style={{ fontSize: '12px', color: '#334155' }}>Work in Progress</span>
+                <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#a16207', border: '2px solid white', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                <span style={{ fontSize: '12px', color: '#3a3a36' }}>Work in Progress</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#22c55e', border: '2px solid white', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
-                <span style={{ fontSize: '12px', color: '#334155' }}>Resolved / Fixed</span>
+                <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#15803d', border: '2px solid white', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                <span style={{ fontSize: '12px', color: '#3a3a36' }}>Resolved / Fixed</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <div style={{
-                  width: '14px', height: '14px', borderRadius: '50%', background: '#2563eb',
+                  width: '14px', height: '14px', borderRadius: '50%', background: '#2451b7',
                   border: '1.5px solid white', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: 'white', fontSize: '9px', fontWeight: '800'
+                  color: 'white', fontSize: '9px', fontWeight: '700'
                 }}>
                   +
                 </div>
-                <span style={{ fontSize: '12px', color: '#334155' }}>Overlapping Group</span>
+                <span style={{ fontSize: '12px', color: '#3a3a36' }}>Overlapping Group</span>
               </div>
             </div>
           )}
@@ -834,28 +827,28 @@ function MapPage() {
           <div style={{
             position: 'absolute', top: '16px', right: '16px', bottom: '16px',
             width: '360px', maxWidth: 'calc(100vw - 32px)',
-            background: 'white', borderRadius: '16px',
-            border: '1px solid #e2e8f0', boxShadow: '0 12px 28px rgba(0,0,0,0.15)',
+            background: 'white', borderRadius: '8px',
+            border: '1px solid #e3e2dc', boxShadow: '0 12px 28px rgba(0,0,0,0.15)',
             zIndex: 1000, display: 'flex', flexDirection: 'column', overflow: 'hidden'
           }}>
             {/* Panel Header */}
             <div style={{
-              padding: '16px 20px', borderBottom: '1px solid #f1f5f9',
+              padding: '16px 20px', borderBottom: '1px solid #f1f1ee',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              background: '#fafaf8'
+              background: '#f7f7f4'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <div style={{
-                  background: '#f1f5f9', width: '32px', height: '32px',
+                  background: '#f1f1ee', width: '32px', height: '32px',
                   borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center'
                 }}>
                   {getCategoryIconComponent(selectedComplaint.category)}
                 </div>
                 <div>
-                  <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', margin: 0 }}>
+                  <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1c1c1a', margin: 0 }}>
                     {selectedComplaint.category}
                   </h3>
-                  <span style={{ fontSize: '11px', color: '#64748b' }}>
+                  <span style={{ fontSize: '11px', color: '#66665f' }}>
                     Complaint #{selectedComplaint.id}
                   </span>
                 </div>
@@ -864,9 +857,9 @@ function MapPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{
                   padding: '3px 10px', borderRadius: '100px', fontSize: '11px', fontWeight: '700',
-                  background: statusConfig[selectedComplaint.status]?.bg || '#f1f5f9',
-                  color: statusConfig[selectedComplaint.status]?.color || '#64748b',
-                  border: `1px solid ${statusConfig[selectedComplaint.status]?.border || '#e2e8f0'}`
+                  background: statusConfig[selectedComplaint.status]?.bg || '#f1f1ee',
+                  color: statusConfig[selectedComplaint.status]?.color || '#66665f',
+                  border: `1px solid ${statusConfig[selectedComplaint.status]?.border || '#e3e2dc'}`
                 }}>
                   {statusConfig[selectedComplaint.status]?.label || selectedComplaint.status}
                 </span>
@@ -876,7 +869,7 @@ function MapPage() {
                   title="Close details"
                   style={{
                     background: 'none', border: 'none', cursor: 'pointer',
-                    color: '#94a3b8', padding: '2px', display: 'flex', alignItems: 'center'
+                    color: '#8f8e86', padding: '2px', display: 'flex', alignItems: 'center'
                   }}
                 >
                   <XCircle size={20} />
@@ -900,12 +893,12 @@ function MapPage() {
                       alt="Complaint evidence"
                       style={{
                         width: '100%', height: '170px', objectFit: 'cover',
-                        borderRadius: '10px', border: '1px solid #e2e8f0', display: 'block'
+                        borderRadius: '10px', border: '1px solid #e3e2dc', display: 'block'
                       }}
                     />
                     <div style={{
                       display: 'flex', alignItems: 'center', gap: '4px',
-                      fontSize: '11px', color: '#3b82f6', marginTop: '6px', fontWeight: '600'
+                      fontSize: '11px', color: '#2f5fc4', marginTop: '6px', fontWeight: '600'
                     }}>
                       <Eye size={12} /> View original photo in full size
                     </div>
@@ -913,9 +906,9 @@ function MapPage() {
                 </div>
               ) : (
                 <div style={{
-                  background: '#f8fafc', border: '1px dashed #cbd5e1',
+                  background: '#f8f8f6', border: '1px dashed #d4d3cc',
                   borderRadius: '10px', padding: '16px', textAlign: 'center',
-                  color: '#94a3b8', fontSize: '12px', marginBottom: '18px'
+                  color: '#8f8e86', fontSize: '12px', marginBottom: '18px'
                 }}>
                   No photograph attached to this report.
                 </div>
@@ -923,25 +916,25 @@ function MapPage() {
 
               {/* Description Section */}
               <div style={{ marginBottom: '18px' }}>
-                <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: '#66665f', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
                   Description
                 </div>
-                <p style={{ fontSize: '13px', color: '#334155', lineHeight: 1.5, margin: 0 }}>
+                <p style={{ fontSize: '13px', color: '#3a3a36', lineHeight: 1.5, margin: 0 }}>
                   {selectedComplaint.description || 'No description provided.'}
                 </p>
               </div>
 
               {/* Location Section */}
               <div style={{ marginBottom: '18px' }}>
-                <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: '#66665f', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
                   Location
                 </div>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', fontSize: '13px', color: '#334155', lineHeight: 1.4 }}>
-                  <MapPin size={15} color="#ef4444" style={{ flexShrink: 0, marginTop: '2px' }} />
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', fontSize: '13px', color: '#3a3a36', lineHeight: 1.4 }}>
+                  <MapPin size={15} color="#c2410c" style={{ flexShrink: 0, marginTop: '2px' }} />
                   <div>
                     {selectedComplaint.address || 'Address not available'}
                     {isValidCoordinate(selectedComplaint.latitude, selectedComplaint.longitude) && (
-                      <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                      <div style={{ fontSize: '11px', color: '#8f8e86', marginTop: '2px' }}>
                         Coordinates: {Number(selectedComplaint.latitude).toFixed(5)}, {Number(selectedComplaint.longitude).toFixed(5)}
                       </div>
                     )}
@@ -951,15 +944,15 @@ function MapPage() {
 
               {/* Timeline Section */}
               <div style={{
-                background: '#f8fafc', border: '1px solid #e2e8f0',
+                background: '#f8f8f6', border: '1px solid #e3e2dc',
                 borderRadius: '10px', padding: '12px 14px'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#66665f', marginBottom: '6px' }}>
                   <CalendarDays size={14} />
                   <span>Reported on {formatDate(selectedComplaint.created_at)}</span>
                 </div>
                 {selectedComplaint.status === 'resolved' && selectedComplaint.resolved_at && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#16a34a', fontWeight: '600' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#15803d', fontWeight: '600' }}>
                     <CheckCircle size={14} />
                     <span>Resolved on {formatDate(selectedComplaint.resolved_at)}</span>
                   </div>
@@ -969,8 +962,8 @@ function MapPage() {
 
             {/* Panel Footer */}
             <div style={{
-              padding: '12px 20px', borderTop: '1px solid #f1f5f9',
-              background: '#fafaf8', display: 'flex', gap: '8px'
+              padding: '12px 20px', borderTop: '1px solid #f1f1ee',
+              background: '#f7f7f4', display: 'flex', gap: '8px'
             }}>
               <button
                 onClick={() => {
@@ -981,7 +974,7 @@ function MapPage() {
                   }
                 }}
                 style={{
-                  flex: 1, padding: '8px 14px', background: '#0f172a',
+                  flex: 1, padding: '8px 14px', background: '#1c1c1a',
                   color: 'white', border: 'none', borderRadius: '8px',
                   fontSize: '12px', fontWeight: '600', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
@@ -993,7 +986,7 @@ function MapPage() {
                 onClick={() => setSelectedComplaint(null)}
                 style={{
                   padding: '8px 14px', background: 'white',
-                  color: '#64748b', border: '1px solid #cbd5e1',
+                  color: '#66665f', border: '1px solid #d4d3cc',
                   borderRadius: '8px', fontSize: '12px', fontWeight: '600',
                   cursor: 'pointer'
                 }}

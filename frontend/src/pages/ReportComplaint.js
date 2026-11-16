@@ -4,6 +4,8 @@ import axios from 'axios';
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { API_URL } from '../config';
+import { CATEGORIES as categories, CategoryIcon } from '../categories';
+import { LocateFixed } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 
 delete L.Icon.Default.prototype._getIconUrl;
@@ -13,11 +15,6 @@ L.Icon.Default.mergeOptions({
   shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
 });
 
-const categories = ['Pothole', 'Broken Streetlight', 'Garbage Dump', 'Open Drain', 'Other'];
-const categoryIcons = {
-  'Pothole': '🕳️', 'Broken Streetlight': '💡',
-  'Garbage Dump': '🗑️', 'Open Drain': '🌊', 'Other': '📍'
-};
 
 const INDIA_CENTER = { latitude: 20.5937, longitude: 78.9629 };
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -154,7 +151,7 @@ function ReportComplaint() {
       const res = await axios.post(`${API_URL}/complaints`, formData, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setMsg(`Complaint #${res.data.id} submitted successfully! It is now visible on the live map.`);
+      setMsg(`Report #${res.data.id} submitted. It is now visible on the map.`);
       setForm(emptyForm);
       setLocationSet(false);
       setFlyTarget(null);
@@ -169,24 +166,18 @@ function ReportComplaint() {
   };
 
   return (
-    <div style={{
-      minHeight: 'calc(100vh - 64px)',
-      background: '#fafaf8',
-      padding: '32px 16px 40px', display: 'flex', justifyContent: 'center'
-    }}>
-      <div style={{ width: '100%', maxWidth: '580px' }}>
-        <h2 style={{ fontSize: '24px', fontWeight: '700', color: '#1a1a1a', marginBottom: '8px' }}>
-          Report a Civic Issue
-        </h2>
-        <p style={{ color: '#666', fontSize: '14px', marginBottom: '28px' }}>
-          Help improve your city by reporting issues in your area
+    <div className="page">
+      <div className="page-narrow">
+        <h1 className="page-title">Report an issue</h1>
+        <p className="muted page-sub">
+          Choose a category, describe the problem and mark its location. A photo helps the ward office act faster.
         </p>
 
         <div className="card">
           {msg && (
             <div className="success">
               {msg}{' '}
-              <Link to="/dashboard" style={{ color: '#15803d', fontWeight: 700 }}>Track it in My Issues →</Link>
+              <Link to="/dashboard" style={{ color: 'inherit', fontWeight: 600 }}>Track it in My reports</Link>
             </div>
           )}
           {error && <div className="error">{error}</div>}
@@ -194,25 +185,18 @@ function ReportComplaint() {
           <form onSubmit={handleSubmit} noValidate>
             {/* Category Grid */}
             <label>Issue Category</label>
-            <div className="category-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '10px', margin: '10px 0 20px' }}>
+            <div className="category-grid">
               {categories.map(cat => (
                 <button type="button" key={cat} onClick={() => setForm({ ...form, category: cat })}
                   aria-pressed={form.category === cat}
-                  style={{
-                    padding: '12px 8px', borderRadius: '10px', textAlign: 'center',
-                    cursor: 'pointer', transition: 'all 0.2s', fontFamily: 'inherit',
-                    background: form.category === cat ? 'rgba(59,130,246,0.1)' : '#f9f9f9',
-                    border: form.category === cat ? '1px solid rgba(59,130,246,0.4)' : '1px solid #e8e8e8',
-                  }}>
-                  <div style={{ fontSize: '22px', marginBottom: '4px' }}>{categoryIcons[cat]}</div>
-                  <div style={{ fontSize: '11px', fontWeight: '600', color: form.category === cat ? '#2563eb' : '#666' }}>
-                    {cat}
-                  </div>
+                  className={`category-option${form.category === cat ? ' selected' : ''}`}>
+                  <CategoryIcon category={cat} size={18} />
+                  <span>{cat}</span>
                 </button>
               ))}
             </div>
 
-            <label>Description <span style={{ color: '#ef4444' }}>*</span></label>
+            <label>Description <span className="required">*</span></label>
             <textarea rows="3" placeholder="Describe the issue, e.g. 'Large pothole near the bus stop, causing two-wheeler accidents'"
               value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
               maxLength={1000}
@@ -240,7 +224,7 @@ function ReportComplaint() {
                 }}>
                   {suggestions.map((s, i) => (
                     <div key={i} onMouseDown={() => handleSelectSuggestion(s)} style={{
-                      padding: '10px 12px', fontSize: '13px', color: '#1a1a1a',
+                      padding: '10px 12px', fontSize: '13px', color: '#1c1c1a',
                       borderBottom: i < suggestions.length - 1 ? '1px solid #e8e8e8' : 'none',
                       cursor: 'pointer', transition: 'background 0.2s',
                       textAlign: 'left'
@@ -256,18 +240,13 @@ function ReportComplaint() {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '8px' }}>
-              <label style={{ margin: 0 }}>Location on Map <span style={{ color: '#ef4444' }}>*</span></label>
-              <button type="button" onClick={getLocation} disabled={locating} style={{
-                padding: '7px 14px',
-                background: '#f0fdf4', color: '#15803d',
-                border: '1px solid #bbf7d0', borderRadius: '100px',
-                cursor: locating ? 'wait' : 'pointer', fontWeight: '600', fontSize: '13px',
-                fontFamily: 'inherit'
-              }}>
-                {locating ? 'Detecting location…' : '📍 Use my current location'}
+              <label style={{ margin: 0 }}>Location on map <span className="required">*</span></label>
+              <button type="button" onClick={getLocation} disabled={locating} className="btn btn-outline btn-small">
+                <LocateFixed size={14} aria-hidden="true" />
+                {locating ? 'Detecting location…' : 'Use my current location'}
               </button>
             </div>
-            <div style={{ height: '260px', width: '100%', marginBottom: '8px', borderRadius: '10px', overflow: 'hidden', border: `1px solid ${locationSet ? '#bbf7d0' : '#e8e8e8'}` }}>
+            <div style={{ height: '260px', width: '100%', marginBottom: '8px', borderRadius: '6px', overflow: 'hidden', border: `1px solid ${locationSet ? '#15803d' : 'var(--line)'}` }}>
               <MapContainer center={[INDIA_CENTER.latitude, INDIA_CENTER.longitude]} zoom={5} style={{ height: '100%', width: '100%' }}>
                 <TileLayer
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -286,24 +265,18 @@ function ReportComplaint() {
                 : 'Click on the map to drop a pin, search an address above, or use your current location.'}
             </p>
 
-            <label>Photo of the Issue <span style={{ color: '#94a3b8', fontWeight: 400 }}>(optional, JPEG/PNG/WebP, max 5 MB)</span></label>
+            <label>Photo of the issue <span className="muted" style={{ fontWeight: 400 }}>(optional, JPEG/PNG/WebP, max 5 MB)</span></label>
             <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleImageChange}
-              style={{ marginBottom: imagePreview ? '10px' : '20px', padding: '10px', background: '#f9f9f9', border: '1px dashed #ccc' }} />
+              style={{ marginBottom: imagePreview ? '10px' : '20px', borderStyle: 'dashed' }} />
             {imagePreview && (
               <img src={imagePreview} alt="Selected issue preview" style={{
                 display: 'block', height: '120px', maxWidth: '100%', objectFit: 'cover',
-                borderRadius: '10px', border: '1px solid #e8e8e8', marginBottom: '20px'
+                borderRadius: '6px', border: '1px solid var(--line)', marginBottom: '20px'
               }} />
             )}
 
-            <button type="submit" disabled={loading} style={{
-              width: '100%', padding: '13px',
-              background: loading ? '#334155' : 'linear-gradient(135deg, #3b82f6, #2563eb)',
-              color: 'white', border: 'none', borderRadius: '10px',
-              fontSize: '15px', fontWeight: '600', fontFamily: 'inherit',
-              cursor: loading ? 'not-allowed' : 'pointer', transition: 'all 0.2s'
-            }}>
-              {loading ? 'Submitting...' : 'Submit Complaint'}
+            <button type="submit" disabled={loading} className="btn btn-primary btn-block">
+              {loading ? 'Submitting...' : 'Submit report'}
             </button>
           </form>
         </div>
