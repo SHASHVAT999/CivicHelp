@@ -23,7 +23,8 @@ cd D:\CivicHelp
 | Fix SSH access after my IP changed | `.\scripts\update-ssh-access.ps1` |
 | Create the demo logins (local / AWS) | `.\scripts\create-demo-accounts.ps1 -Target Local` / `-Target Aws` |
 | **Start Jenkins** | `.\scripts\start-jenkins.ps1 -OpenBrowser` |
-| Show Jenkins build results in the terminal | `.\scripts\status-jenkins.ps1 -ShowLog CivicHelp-CI` |
+| Run the CI/CD pipeline without logging in | `.\scripts\stop-jenkins.ps1` then `.\scripts\start-jenkins.ps1 -RunBuild Pipeline` |
+| Show Jenkins build results in the terminal | `.\scripts\status-jenkins.ps1 -ShowLog CivicHelp-Pipeline` |
 | **Stop Jenkins** | `.\scripts\stop-jenkins.ps1` |
 | Run the app on my laptop only | `docker compose up -d`, then open http://localhost |
 
@@ -145,61 +146,63 @@ The map and the address search need the internet (OpenStreetMap).
 
 ---
 
-## 5. Jenkins: start it and show a successful pipeline
+## 5. Jenkins: the CI/CD pipeline
 
-Jenkins is your existing installation from the coursework. Nothing new is installed.
+Jenkins is your existing installation from the coursework; nothing new is installed. There is **one** job,
+**CivicHelp-Pipeline**, which tests a commit and then deploys it to AWS. Every stage is explained in
+[CI_CD_PIPELINE.md](CI_CD_PIPELINE.md). Read it before the presentation.
 
 ### Start
 ```powershell
 cd D:\CivicHelp
 .\scripts\start-jenkins.ps1 -OpenBrowser
 ```
-It takes 1 to 2 minutes. Jenkins is then at **http://localhost:8080**. Log in with your existing Jenkins admin account (user name `devopsadmin`). Each start the script makes sure the two CivicHelp jobs and the two credentials exist; your other course jobs are not touched.
+It takes 1 to 2 minutes. Jenkins is then at **http://localhost:8080**. Log in with your existing admin account
+(`devopsadmin`). On each start the script makes sure the job and the two encrypted credentials exist. Your other
+course jobs are not touched. The old `CivicHelp-CI` and `CivicHelp-Deploy-AWS` jobs are shown **disabled**: they were
+replaced by the single pipeline, and their history is kept.
 
-### The two jobs (CI and deployment are separate on purpose)
+### The stages
 
-| Job | What it does | Touches AWS? |
+| # | Stage | In one sentence |
 |---|---|---|
-| **CivicHelp-CI** | Checks out GitHub, validates Docker Compose, Terraform and Ansible, builds both Docker images and tests them | **No** |
-| **CivicHelp-Deploy-AWS** | Updates the existing EC2 server with Terraform (guarded plan) and Ansible, then tests it | **Yes** |
+| 1 | Checkout | Gets the commit from GitHub and remembers its exact id |
+| 2 | Tool Check | Docker, Compose, Terraform, Git, Ansible (WSL) and the AWS CLI are available |
+| 3 | Validate | Compose files, Terraform (fmt + validate) and the Ansible playbook, in parallel |
+| 4 | Build Images | Builds the backend and frontend Docker images, tagged with the build number |
+| 5 | Unit Tests | 12 backend unit tests inside the new image; `nginx -t` in the frontend image |
+| 6 | Integration Test | Throwaway copy of the app (in-memory database) runs the whole workflow: 49 checks |
+| 7 | AWS Preflight | Lab credentials valid, server running, snapshot of the existing data |
+| 8 | Terraform Plan | Plan against the existing state; **refused** if it would add, replace or destroy anything |
+| 9 | Terraform Apply | Applies exactly that plan (normally no changes) |
+| 10 | Ansible Deploy | Server checks out the **tested commit** and restarts the containers (data volumes kept) |
+| 11 | Verify Deployment | Health + database, deployed version = tested commit, MySQL query, website, **old data and photos still there** |
 
-### Show the CI pipeline to the professor
-1. Open http://localhost:8080 and click **CivicHelp-CI**.
-2. Click **Build Now** (left menu). A new build `#N` appears under *Builds*. It takes about 1.5 minutes (the first build can take longer).
-3. Click the build number, then **Pipeline Overview** (or **Pipeline Graph**) to see the stages turn green: *Checkout, Tool Check, Validate Compose, Validate Terraform, Validate Ansible, Build Docker Images, Test Images*.
-4. Click **Console Output** and scroll. Things worth pointing at:
-   - `Obtained Jenkinsfile from git https://github.com/SHASHVAT999/CivicHelp.git`: the pipeline comes from GitHub.
-   - `docker-compose.yml is valid`, `Terraform files are correctly formatted`, `playbook: ansible/deploy.yml`.
-   - `naming to docker.io/library/civichelp-backend:ci`: the images are built.
-   - `nginx: configuration file ... test is successful` and `Finished: SUCCESS` at the end.
-5. Show the **Jenkinsfile** in GitHub (`Jenkinsfile`, and `jenkins/Jenkinsfile.deploy`), and **Manage Jenkins > Credentials**: `CIVICHELP_DB_PASSWORD` and `CIVICHELP_JWT_SECRET` (stored encrypted, never shown in the logs).
+### Show the pipeline to the professor
+Preconditions for the full run: lab started, credentials refreshed (section 2), server **running** (section 3).
+1. Open http://localhost:8080 and click **CivicHelp-Pipeline**.
+2. Click **Build with Parameters**. Keep the defaults (`DEPLOY_TO_AWS` ticked, `ADMIN_CIDR` empty) and click **Build**.
+   This takes about 7 minutes. Untick `DEPLOY_TO_AWS` for a 2-minute CI-only run; stages 7-11 are then shown as skipped.
+3. Open the build and choose **Pipeline Overview** (the graph view). Point at the parallel *Validate* branches and the CI to CD order.
+4. In **Console Output**, things worth pointing at:
+   - `Obtained Jenkinsfile from git https://github.com/SHASHVAT999/CivicHelp.git`
+   - `Commit under test: ...`
+   - `# pass 12` (unit tests) and `Integration test: 49 passed, 0 failed`
+   - `Plan is safe: nothing is added, replaced or destroyed.`
+   - the deploy secrets shown only as `****`
+   - `[2/5] Deployed version is ...` and `[5/5] Existing data preserved`
+   - `Finished: SUCCESS`
+5. Show the **Jenkinsfile** in GitHub, and **Manage Jenkins > Credentials** (`CIVICHELP_DB_PASSWORD`,
+   `CIVICHELP_JWT_SECRET`, stored encrypted).
 
-Without logging in, from the terminal you can show the same result:
-```powershell
-.\scripts\status-jenkins.ps1 -ShowLog CivicHelp-CI           # results of the last 5 builds + end of the console log
-.\scripts\status-jenkins.ps1 -ShowLog CivicHelp-CI -Tail 200 # more of the console log
-```
-
-You can also run a build **without logging in**. Jenkins must be stopped first, because the build is started by Jenkins itself during start-up:
+### Without logging in (from the terminal)
 ```powershell
 .\scripts\stop-jenkins.ps1
-.\scripts\start-jenkins.ps1 -RunBuild CI        # starts Jenkins, then runs one CivicHelp-CI build
-.\scripts\status-jenkins.ps1 -ShowLog CivicHelp-CI   # about 2 minutes later
+.\scripts\start-jenkins.ps1 -RunBuild Pipeline          # or -RunBuild PipelineCIOnly (never touches AWS)
+.\scripts\status-jenkins.ps1 -ShowLog CivicHelp-Pipeline -Tail 80   # a few minutes later
 ```
-(`-RunBuild Deploy` does the same for the AWS deployment job.) Remote triggers are deliberately not used: they would require weakening Jenkins security.
-
-### Run the AWS deployment job (only when you want to show it)
-Preconditions: lab started, credentials refreshed (section 2), server **running** (section 3). Then in Jenkins click **CivicHelp-Deploy-AWS > Build with Parameters** and keep the defaults (leave `ADMIN_CIDR` empty: your IP is detected). Stages and what they prove:
-
-| Stage | What it checks or does |
-|---|---|
-| AWS Preflight | The AWS credentials work and `civichelp-server` is `running` (otherwise it stops with the fix to run) |
-| Terraform Plan | Plans against the **existing** state; **refuses to continue if the plan would add, replace or destroy anything** |
-| Terraform Apply | Applies exactly that saved plan (normally `0 added, 0 changed, 0 destroyed`) |
-| Ansible Deploy | Runs `ansible/deploy.yml` through WSL: pulls `main`, rebuilds the containers (volumes kept), waits for MySQL to be `healthy` and the API to answer |
-| Smoke Test | `[1/3]` API health, `[2/3]` MySQL answers a real query through the API, `[3/3]` the website returns the CivicHelp page. Any failure fails the build |
-
-A deployment takes about 4 minutes and restarts the containers for a moment (the data stays). In the console the secrets appear only as `****` (Jenkins masks them).
+The build is started by Jenkins itself during start-up. Remote trigger URLs are deliberately not used, because they
+would require weakening Jenkins security.
 
 ### Stop
 ```powershell
@@ -211,7 +214,7 @@ It refuses to stop while a build is running (add `-Force` to stop anyway). Jobs 
 
 ## 6. Demonstration script (about 8 minutes)
 
-Use **three separate browser sessions**: a normal window (citizen), a private/incognito window (officer) and a second browser, for example Edge (worker). Open the **Live Map** in a fourth tab.
+Use **three separate browser sessions**: a normal window (citizen), a private/incognito window (officer) and a second browser, for example Edge (worker). Open the **Map** in a fourth tab.
 
 Passwords are in `D:\AWSConfig\civichelp-demo-accounts.txt`. Create the logins on the target first:
 ```powershell
@@ -221,14 +224,14 @@ Accounts: `citizen@civichelp.demo`, `officer@civichelp.demo`, `worker@civichelp.
 
 | # | Who | Do this | Say this |
 |---|---|---|---|
-| 1 | Anyone | Open the site, scroll through the home page | "Live statistics straight from the database." |
-| 2 | Citizen | **Login** > Register: name *Priya Sharma*, `priya@example.com`, a password of 6+ characters. Log in | "Anyone can register, but the role is always *citizen*." |
-| 3 | Citizen | **Report Issue** > *Pothole*; description `Deep pothole outside Andheri station, two-wheelers swerving into traffic`; type `Andheri station Mumbai` in the address box and pick a result; attach the "before" photo; **Submit** | "Location and a description are required; the photo is checked by type and size." |
+| 1 | Anyone | Open the site, scroll through the home page | "The figures under *Current status* come straight from the database." |
+| 2 | Citizen | **Log in** > *Create a citizen account*: name *Priya Sharma*, `priya@example.com`, a password of 6+ characters. Log in | "Anyone can register, but the role is always *citizen*." |
+| 3 | Citizen | **Report an issue** > *Pothole*; description `Deep pothole outside Andheri station, two-wheelers swerving into traffic`; type `Andheri station Mumbai` in the address box and pick a result; attach the "before" photo; **Submit** | "Location and a description are required; the photo is checked by type and size." |
 | 4 | Map tab | The new red marker appears **without refreshing** | "Socket.IO pushes the update through Nginx in real time." |
 | 5 | Officer | Log in as the officer. **Dashboard** shows the complaint with its photo | "Role-based dashboard; the **Live** badge shows the real-time connection." |
 | 6 | Officer | **Assign** > choose *Field Worker (Demo)* > **Save** | "Status changes to *In Progress*; the map marker turns amber live." |
 | 7 | Worker | Log in as the worker. The task is listed. **Submit Resolution Proof**: attach the "after" photo, notes `Filled with cold-mix asphalt and compacted` | "A task cannot be resolved without a photo, and workers see only their own tasks." |
-| 8 | Citizen | **My Issues**: before and after photos and the verification prompt appear | "Closure is backed by evidence." |
+| 8 | Citizen | **My reports**: before and after photos and the verification prompt appear | "Closure is backed by evidence." |
 | 9 | Citizen | **Request Reopening**, reason `Patch already sinking after rain` | "The citizen has the final say. The task returns to *In Progress*." |
 | 10 | Officer | The red *Citizen Reopened* banner with the reason is visible | |
 | 11 | Worker, then citizen | Worker resolves again with a new photo; citizen clicks **Confirm Fixed** | "Final state: *Verified Fixed*; the map marker is green." |
@@ -240,9 +243,9 @@ Accounts: `citizen@civichelp.demo`, `officer@civichelp.demo`, `worker@civichelp.
 
 | Technology | What to open | What to say |
 |---|---|---|
-| **GitHub** | https://github.com/SHASHVAT999/CivicHelp : the commits, `Jenkinsfile`, `terraform/`, `ansible/`, `docker-compose.yml` | "Everything, including the infrastructure, is code in one repository. Secrets are not in it." |
+| **GitHub** | https://github.com/SHASHVAT999/CivicHelp : the commits, `Jenkinsfile`, `tests/`, `terraform/`, `ansible/`, `docker-compose.yml` | "Everything, including the infrastructure, is code in one repository. Secrets are not in it." |
 | **Docker** | `docker compose ps`, `docker compose config`, `docker images` | "Three containers: Nginx and React, Express API, MySQL. Named volumes keep the data." |
-| **Jenkins** | http://localhost:8080, the CI job and its console | "Every change is validated and the images are built automatically; deployment is a separate, guarded job." |
+| **Jenkins** | http://localhost:8080, **CivicHelp-Pipeline**, Pipeline Overview and Console Output | "One pipeline: it validates, builds and tests every commit, and only then deploys that exact commit to AWS and proves the data survived." |
 | **Terraform** | `cd terraform` then `terraform state list` and `terraform plan` (it must say *No changes* or only refreshes) | "Declares the server, security group and key pair. Port 80 is public, SSH only from my IP." |
 | **Ansible** | `ansible/deploy.yml` | "Installs Docker, swap, clones the repository, writes the secrets file, starts the containers and checks the health." |
 | **AWS** | Console > EC2 > Instances > `civichelp-server`; the security group `civichelp-sg`; Volumes (20 GB gp3) | "One t3.micro, no RDS or load balancer, to stay inside the Learner Lab budget." |
@@ -257,7 +260,7 @@ A good order for the talk: problem, live demo (section 6), then architecture and
 1. Start the AWS Academy lab, refresh the credentials (section 2).
 2. `.\scripts\start-civichelp.ps1` and open the printed address.
 3. `.\scripts\create-demo-accounts.ps1 -Target Aws` (safe to repeat; it only verifies if they exist).
-4. `.\scripts\start-jenkins.ps1 -OpenBrowser`, log in, and click **Build Now** on **CivicHelp-CI** once so the history is fresh.
+4. `.\scripts\start-jenkins.ps1 -OpenBrowser`, log in, and run **CivicHelp-Pipeline** once (*Build with Parameters*, defaults) so a fresh green build is ready to show.
 5. Open `http://localhost` too (`docker compose up -d`) as a backup.
 6. Prepare the two photos and the three browser sessions.
 
@@ -280,8 +283,13 @@ A good order for the talk: problem, live demo (section 6), then architecture and
 | Instance cannot be started | The lab is not started or the budget is used up: check the Learner Lab page |
 | Jenkins: `Port 8080 is used by another program` | Close the other program (or an old Jenkins): `.\scripts\stop-jenkins.ps1` |
 | Jenkins does not become ready | Read `D:\cloud-devops-assignment\vle-pbl3\shared\logs\civichelp-jenkins-err.log` |
-| Jenkins CI fails in *Build Docker Images* | Docker Desktop is not running: start it, wait for "Engine running", build again |
-| Jenkins deploy fails in *AWS Preflight* | Credentials expired or the server is stopped: section 2 and section 3 |
+| Pipeline fails in *Tool Check* or *Build Images* | Docker Desktop is not running: start it, wait for "Engine running", build again |
+| Pipeline fails in *Unit Tests* or *Integration Test* | A real bug in the commit. The console shows the `FAIL` line and the container logs. Fix, push, build again. Nothing was deployed |
+| Pipeline fails in *AWS Preflight* | Credentials expired or the server is stopped: section 2 and section 3. Or untick `DEPLOY_TO_AWS` for CI only |
+| *Terraform Plan*: `differs from terraform/... in commit` | `D:\CivicHelp` is behind GitHub: `cd D:\CivicHelp; git pull`, then build again |
+| *Terraform Plan*: `REFUSING` | The plan would add, replace or destroy something. Do not force it: `cd terraform; terraform plan` and read why |
+| *Ansible Deploy*: `SSH is not reachable` | Your public IP changed. Leave `ADMIN_CIDR` empty (auto-detect) and build again, or run `.\scripts\update-ssh-access.ps1` |
+| *Verify Deployment*: `different version` | The backend was not restarted with the new code. Read the Ansible output above it; running the pipeline again is safe |
 | Cannot log in to Jenkins | Use the admin account from your coursework. It was not changed by these scripts |
 | `docker compose` build says `additional privileges requested` | `$env:BUILDX_BAKE_ENTITLEMENTS_FS="0"` first, then repeat the command |
 | Map is empty or grey | The laptop has no internet (map tiles come from OpenStreetMap) |
@@ -296,34 +304,44 @@ A good order for the talk: problem, live demo (section 6), then architecture and
 ```
 Your laptop (D:\CivicHelp)              GitHub (main)                  AWS (us-east-1)
   scripts\*.ps1  --- start/stop --->                                  EC2 t3.micro (existing)
-  Jenkins :8080  -- CI: validate+build <-- checkout                     |- Nginx :80 (public)
-                 -- Deploy-AWS: Terraform plan/apply ----------------->  |- Express :5001 (internal)
-                    Ansible (WSL) --- git clone, docker compose up --->   |- MySQL (internal, volume)
+  Jenkins :8080  CivicHelp-Pipeline  <-- checkout                      |- Nginx :80 (public)
+    CI: validate, build, unit + integration tests (local Docker)        |- Express :5001 (internal)
+    CD: Terraform plan/apply (guarded) ------------------------------>  |- MySQL (internal, volume)
+        Ansible (WSL): git checkout <tested commit>, compose up ----->  |
+        Verify: health, version, MySQL, website, data preserved ---->   |
 ```
 
 ---
 
 ## 11. What was tested (16 Nov 2026)
 
-Everything below was actually run on this laptop and against the real EC2 instance.
+Everything below was actually run in the real Jenkins on this laptop and against the real EC2 instance.
 
-**Application on AWS**
-- An automated end-to-end test ran against the deployed site through Nginx: **43 of 43 checks passed**. It covered registration and login, a complaint with a photo, rejection of fake images, permissions for each role, officer assignment, worker resolution with an "after" photo, citizen reopening with a reason, re-resolution, citizen confirmation, and live Socket.IO events over WebSocket.
-- **Persistence across EC2 stop/start:** the complaints, statuses, worker assignment and both photo files were fingerprinted (SHA-256), the instance was stopped and started with the scripts, and everything was **identical** afterwards. The public IP changed and the containers restarted on their own.
-- Data also survived a full redeployment by Jenkins (containers rebuilt, named volumes kept).
+**Unified pipeline (CivicHelp-Pipeline)**
+- **CI only** (`DEPLOY_TO_AWS` unticked): SUCCESS. Every CI stage passed, and the five CD stages were shown as skipped.
+- **Full CI/CD**: SUCCESS on the real EC2 instance.
+  - CI: unit tests 12/12; integration test 49/49 on the throwaway stack.
+  - Terraform: the plan was `0 to add, 0 to change, 0 to destroy`, and the apply changed nothing.
+  - Ansible: `ok=18 failed=0`.
+  - Verification [1/5] to [5/5] all passed. The server reported the tested commit as its version.
+- The database password and JWT secret do not appear in the console log (searched for the actual values).
+- The final commit was built and deployed by the pipeline as well (see the Jenkins build history).
 
-**Scripts**
-- `start-civichelp.ps1`, `stop-civichelp.ps1`, `status-civichelp.ps1`: real stops and starts of the instance, including the status shown while stopped.
-- `update-aws-credentials.ps1`: a fake block is rejected and nothing is saved; an incomplete block is rejected; genuine credentials are accepted, saved (other profiles kept) and verified.
-- `create-demo-accounts.ps1`: locally and on AWS (SSH through WSL), including repeat runs.
-- `update-ssh-access.ps1`: the "already allowed, nothing to change" path. The plan-and-apply path was done earlier by hand with the same safeguards (plan `0 to add, 1 to change, 0 to destroy`).
-- `start-jenkins.ps1` (including `-RunBuild`), `stop-jenkins.ps1`, `status-jenkins.ps1`.
+**Data safety**
+- Before the first deployment with the new pipeline, the server was fingerprinted directly: the user count, every
+  complaint row, and the SHA-256 of every uploaded file. After the deployment the fingerprint was **identical**.
+- To prove that photos survive a deployment, one labelled test report with a photo was added. The final pipeline run
+  checked that photo after deploying (check [5/5]), and the test report was then removed again.
+- The two named volumes `civichelp_mysql-data` and `civichelp_uploads-data` were present throughout. No volume was ever removed.
 
-**Jenkins**
-- Both jobs were created in your existing Jenkins by `start-jenkins.ps1`, together with the two encrypted credentials. Your other jobs were not changed and security was not weakened.
-- `CivicHelp-CI` and `CivicHelp-Deploy-AWS` both finished with a top-level **SUCCESS** on the final GitHub commit. The deploy smoke test was also run against a wrong target to confirm it **fails** when a check fails.
+**Application**
+- The integration test covers the whole workflow through Nginx, including real-time Socket.IO events (49 checks).
+- The UI was checked for every role (guest, citizen, officer, worker) at desktop (1366 px) and phone (390 px) widths:
+  no console errors and no horizontal scrolling.
+- Earlier sessions: data and photos were identical after an EC2 stop/start; the start/stop/status/credential scripts were tested with real AWS.
 
 **Not verified**
-- Delivery of resolution emails: no SMTP credentials are configured, so the app logs that it skipped the email.
+- Delivery of resolution e-mails: no SMTP credentials are configured, so the app logs that it skipped the e-mail.
 - `update-aws-credentials.ps1` reading from the **clipboard** with real credentials (the same parsing was tested from a file).
-- The Jenkins web pages (Build Now, Pipeline Overview, Credentials) were not opened with your login. The builds themselves were verified from Jenkins' build records and console logs.
+- The Jenkins web pages (Build with Parameters, Pipeline Overview, Credentials) were not opened with your login. The
+  builds were started with `-RunBuild` and verified from Jenkins' build records and console logs.
