@@ -1,0 +1,83 @@
+# ==============================================================================
+# CivicHelp - THROWAWAY test stack for the Jenkins "Integration Test" stage.
+# ==============================================================================
+# Runs the images that the pipeline has just built (civichelp-*:ci) - not a new build -
+# so the test exercises exactly what will be deployed.
+#
+#   * No named volumes: MySQL keeps its data in memory (tmpfs) and is gone after "down".
+#     It can never touch the real mysql-data / uploads-data volumes.
+#   * No host ports and no fixed container names: it cannot clash with a CivicHelp
+#     stack that is already running on the same machine.
+#
+# Used by the Jenkinsfile:
+#   docker compose -p civichelp-ci -f docker-compose.ci.yml up -d --wait db backend frontend
+#   docker compose -p civichelp-ci -f docker-compose.ci.yml run --rm tester
+#   docker compose -p civichelp-ci -f docker-compose.ci.yml down --remove-orphans
+# ==============================================================================
+x-backend-env: &backend-env
+  DB_HOST: db
+  DB_PORT: 3306
+  DB_USER: root
+  DB_PASSWORD: ci-throwaway-password
+  DB_NAME: civichelp
+  JWT_SECRET: ci-throwaway-jwt-secret
+  CLIENT_URL: http://frontend
+
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ci-throwaway-password
+      MYSQL_DATABASE: civichelp
+    tmpfs:
+      - /var/lib/mysql
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      # Ping over TCP: during first start-up MySQL briefly runs a socket-only temporary server
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-pci-throwaway-password"]
+      interval: 3s
+      timeout: 5s
+      start_period: 30s
+      retries: 40
+
+  backend:
+    image: civichelp-backend:${CI_TAG:-ci}
+    environment:
+      <<: *backend-env
+      PORT: 5001
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 5s
+      start_period: 10s
+      retries: 20
+
+  frontend:
+    image: civichelp-frontend:${CI_TAG:-ci}
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # Runs the workflow test from inside the compose network, through Nginx (http://frontend)
+  tester:
+    image: civichelp-backend:${CI_TAG:-ci}
+    profiles: ["test"]
+    environment:
+      <<: *backend-env
+      BASE: http://frontend
+      TEST_PASSWORD: CiTest123
+    volumes:
+      - ./tests/integration:/tests:ro
+    depends_on:
+      frontend:
+        condition: service_started
+    entrypoint: ["sh", "-c"]
+    command:
+      - >
+        node scripts/create-staff.js officer "CI Officer" ci-officer@test.local CiTest123 &&
+        node scripts/create-staff.js worker "CI Worker" ci-worker@test.local CiTest123 &&
+        node /tests/workflow.test.js

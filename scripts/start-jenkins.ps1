@@ -10,18 +10,21 @@
 
   Every start it (idempotently) makes sure that
     - credentials CIVICHELP_DB_PASSWORD / CIVICHELP_JWT_SECRET exist,
-    - the jobs CivicHelp-CI and CivicHelp-Deploy-AWS exist.
+    - the unified CI/CD job CivicHelp-Pipeline exists
+    - the old two-job setup (CivicHelp-CI, CivicHelp-Deploy-AWS) is disabled once the
+      unified pipeline has deployed successfully (history kept, nothing deleted).
   Your other Jenkins jobs are never touched. Jenkins listens on http://localhost:8080 (this PC only).
 
-  Usage:  powershell -ExecutionPolicy Bypass -File scripts\start-jenkins.ps1 [-OpenBrowser] [-RunBuild CI|Deploy]
+  Usage:  powershell -ExecutionPolicy Bypass -File scripts\start-jenkins.ps1 [-OpenBrowser] [-RunBuild Pipeline|PipelineCIOnly]
 
-  -RunBuild CI      starts Jenkins and immediately runs one CivicHelp-CI build (no login needed).
-  -RunBuild Deploy  does the same for the AWS deployment job (changes AWS - use deliberately).
+  -RunBuild Pipeline        starts Jenkins and immediately runs one full CivicHelp-Pipeline build
+                            (CI + deploy to AWS; needs the lab started and the server running). No login needed.
+  -RunBuild PipelineCIOnly  same, but with DEPLOY_TO_AWS unticked: only the CI stages run (never touches AWS).
 #>
 [CmdletBinding()]
 param(
     [switch]$OpenBrowser,
-    [ValidateSet('None', 'CI', 'Deploy')][string]$RunBuild = 'None',
+    [ValidateSet('None', 'Pipeline', 'PipelineCIOnly')][string]$RunBuild = 'None',
     [int]$TimeoutSeconds = 300
 )
 . "$PSScriptRoot\_common.ps1"
@@ -112,8 +115,8 @@ if (Test-JenkinsUp) {
     Write-Ok 'Jenkins is ready'
 }
 
-Write-Step 'Checking the CivicHelp pipelines'
-foreach ($job in 'CivicHelp-CI', 'CivicHelp-Deploy-AWS') {
+Write-Step 'Checking the CivicHelp pipeline'
+foreach ($job in @('CivicHelp-Pipeline')) {
     if (Test-Path (Join-Path $JenkinsHome "jobs\$job\config.xml")) { Write-Ok "Job exists: $job" }
     else { Write-Warn "Job missing: $job (see $LogDir\civichelp-jenkins-err.log)" }
 }
@@ -123,6 +126,6 @@ Write-Host '   ==============================================' -ForegroundColor 
 Write-Host "    Jenkins is running:  $Url" -ForegroundColor Green
 Write-Host '   ==============================================' -ForegroundColor Green
 Write-Host '   Log in with your existing Jenkins admin account (see the guide if you forgot it).' -ForegroundColor Gray
-Write-Host '   Jobs:  CivicHelp-CI (build)   CivicHelp-Deploy-AWS (separate, deploys to AWS)' -ForegroundColor Gray
+Write-Host '   Job:   CivicHelp-Pipeline  (one pipeline: CI stages, then deployment to AWS)' -ForegroundColor Gray
 Write-Host ''
 if ($OpenBrowser) { Start-Process $Url }

@@ -3,11 +3,11 @@
   Show whether Jenkins is running and the latest results of the CivicHelp jobs.
   Reads the build records from jenkins_home directly, so no Jenkins login is needed.
 
-  Usage:  powershell -ExecutionPolicy Bypass -File scripts\status-jenkins.ps1 [-ShowLog CivicHelp-CI]
+  Usage:  powershell -ExecutionPolicy Bypass -File scripts\status-jenkins.ps1 [-ShowLog CivicHelp-Pipeline]
 #>
 [CmdletBinding()]
 param(
-    [string]$ShowLog,
+    [string]$ShowLog,   # job name, e.g. CivicHelp-Pipeline
     [int]$Tail = 40
 )
 . "$PSScriptRoot\_common.ps1"
@@ -18,8 +18,12 @@ $up = $false
 try { $up = ((Invoke-WebRequest -Uri 'http://localhost:8080/login' -UseBasicParsing -TimeoutSec 5).StatusCode -eq 200) } catch {}
 if ($up) { Write-Ok 'Jenkins is running:  http://localhost:8080' } else { Write-Warn 'Jenkins is NOT running.  Start it with: scripts\start-jenkins.ps1' }
 
-foreach ($job in 'CivicHelp-CI', 'CivicHelp-Deploy-AWS') {
-    Write-Step $job
+foreach ($job in 'CivicHelp-Pipeline', 'CivicHelp-CI', 'CivicHelp-Deploy-AWS') {
+    if ($job -ne 'CivicHelp-Pipeline' -and -not (Test-Path (Join-Path $JenkinsHome "jobs\$job"))) { continue }
+    $cfg = Join-Path $JenkinsHome "jobs\$job\config.xml"
+    $label = $job
+    if ((Test-Path $cfg) -and ((Get-Content -Raw $cfg) -match '<disabled>true</disabled>')) { $label = "$job  (retired - disabled)" }
+    Write-Step $label
     $dir = Join-Path $JenkinsHome "jobs\$job\builds"
     if (-not (Test-Path $dir)) { Write-Info 'no builds yet'; continue }
     $nums = Get-ChildItem $dir -Directory | Where-Object { $_.Name -match '^\d+$' } | Sort-Object { [int]$_.Name } -Descending | Select-Object -First 5

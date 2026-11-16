@@ -27,6 +27,7 @@ if (missingEnv.length > 0) {
 const authRoutes = require('./routes/auth');
 const complaintRoutes = require('./routes/complaints');
 const { uploadsDir } = require('./middleware/upload');
+const db = require('./models/db');
 
 const app = express();
 const server = http.createServer(app);
@@ -42,8 +43,9 @@ const io = new Server(server, {
   cors: { origin: allowedOrigins, methods: ['GET', 'POST', 'PATCH'] }
 });
 
+app.disable('x-powered-by');
 app.use(cors({ origin: allowedOrigins }));
-app.use(express.json());
+app.use(express.json({ limit: '100kb' }));
 
 // Absolute path static serving for uploaded photographs
 if (!fs.existsSync(uploadsDir)) {
@@ -55,12 +57,24 @@ app.use('/uploads', express.static(uploadsDir));
 app.use('/api/auth', authRoutes);
 app.use('/api/complaints', complaintRoutes);
 
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'CivicHelp backend is running ✅',
-    timestamp: new Date().toISOString()
-  });
+// Git commit of the running code (written into .env by the Ansible deployment); "dev" locally.
+const APP_VERSION = process.env.APP_VERSION || 'dev';
+
+// Health check used by Docker, Ansible, Jenkins and the start/status scripts.
+// It runs a real query, so "healthy" means the API AND the database answer. 503 otherwise.
+app.get('/api/health', async (req, res) => {
+  const timestamp = new Date().toISOString();
+  try {
+    await db.query('SELECT 1');
+    res.json({ status: 'CivicHelp backend is running', database: 'connected', version: APP_VERSION, timestamp });
+  } catch (err) {
+    console.error('[Health] Database check failed:', err.code || err.message);
+    res.status(503).json({ status: 'CivicHelp backend is running', database: 'unavailable', version: APP_VERSION, timestamp });
+  }
 });
+
+// Unknown API routes return JSON (not Express' HTML page)
+app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
 io.on('connection', (socket) => {
   console.log('[Socket.IO] Client connected:', socket.id);
@@ -69,12 +83,16 @@ io.on('connection', (socket) => {
 
 app.set('io', io);
 
-// Global fallback error handler
+// Global fallback error handler. Client errors (e.g. malformed JSON -> 400) keep their message;
+// server errors are logged but the client only gets a generic message (no internals leaked).
+// eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  console.error('[Server Error]', err);
-  res.status(err.status || 500).json({
-    error: err.message || 'Internal server error'
-  });
+  const status = Number.isInteger(err.status) && err.status >= 400 && err.status < 600 ? err.status : 500;
+  if (status >= 500) console.error('[Server Error]', err);
+  const message = status < 500
+    ? (err.type === 'entity.parse.failed' ? 'Request body is not valid JSON.' : (err.expose && err.message) || 'Bad request')
+    : 'Internal server error';
+  res.status(status).json({ error: message });
 });
 
 const PORT = process.env.PORT || 5001;

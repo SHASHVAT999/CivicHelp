@@ -19,11 +19,19 @@ services:
       CLIENT_URL: ${CLIENT_URL:-http://localhost,http://localhost:3000}
       EMAIL_USER: ${EMAIL_USER}
       EMAIL_PASS: ${EMAIL_PASS}
+      APP_VERSION: ${APP_VERSION:-dev}
     volumes:
       - uploads-data:/app/uploads
     depends_on:
       db:
         condition: service_healthy
+    # /api/health runs a real database query, so "healthy" means API + database work
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
     networks:
       - civichelp-network
 
@@ -39,7 +47,8 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - civichelp-network
 

@@ -8,6 +8,7 @@
 #   SSH_KEY                   path to the private key (a /mnt/... path is fine inside WSL)
 # Optional:
 #   GIT_REPO_URL (default: GitHub repo of this project)   GIT_BRANCH (default: main)
+#   GIT_COMMIT   exact commit to deploy (Jenkins sets this to the commit it has just tested)
 set -euo pipefail
 
 : "${DB_PASSWORD:?DB_PASSWORD is not set}"
@@ -16,6 +17,7 @@ set -euo pipefail
 : "${SSH_KEY:?SSH_KEY is not set}"
 GIT_REPO_URL="${GIT_REPO_URL:-https://github.com/SHASHVAT999/CivicHelp.git}"
 GIT_BRANCH="${GIT_BRANCH:-main}"
+GIT_COMMIT="${GIT_COMMIT:-}"
 
 # ssh refuses keys that other users can read; keys on /mnt/<drive> cannot be chmod'ed, so use a private copy.
 KEY="$HOME/.ssh/civichelp-key"
@@ -39,4 +41,5 @@ done
 ansible-playbook -i "$INVENTORY" ansible/deploy.yml \
   -e "ec2_ip=$EC2_IP" \
   -e "git_repo_url=$GIT_REPO_URL" \
-  -e "git_branch=$GIT_BRANCH"
+  -e "git_branch=$GIT_BRANCH" \
+  -e "git_commit=$GIT_COMMIT"

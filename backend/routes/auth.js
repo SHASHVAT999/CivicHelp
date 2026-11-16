@@ -3,25 +3,21 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../models/db');
+const { validateRegistration, clean } = require('../utils/validation');
 
 // Register — role is always 'citizen' regardless of request payload
 router.post('/register', async (req, res) => {
-  const { name, email, password } = req.body;
-  if (!name || !email || !password) {
-    return res.status(400).json({ error: 'Name, email, and password are required.' });
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim())) {
-    return res.status(400).json({ error: 'Please provide a valid email address.' });
-  }
-  if (String(password).length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  const { name, email, password } = req.body || {};
+  const problem = validateRegistration({ name, email, password });
+  if (problem) {
+    return res.status(400).json({ error: problem });
   }
 
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(String(password), 10);
     await db.query(
       'INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)',
-      [name, email, hashedPassword, 'citizen']
+      [clean(name), clean(email), hashedPassword, 'citizen']
     );
     res.status(201).json({ message: 'User registered successfully' });
   } catch (err) {
@@ -35,19 +31,19 @@ router.post('/register', async (req, res) => {
 
 // Login
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
+  const { email, password } = req.body || {};
+  if (!clean(email) || !password) {
     return res.status(400).json({ error: 'Email and password are required.' });
   }
 
   try {
-    const [users] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
+    const [users] = await db.query('SELECT id, name, role, password FROM users WHERE email = ?', [clean(email)]);
     if (users.length === 0) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const user = users[0];
-    const isMatch = await bcrypt.compare(password, user.password);
+    const isMatch = await bcrypt.compare(String(password), user.password);
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }

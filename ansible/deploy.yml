@@ -10,6 +10,9 @@
     # Git repository settings (supplied via extra-vars: -e "git_repo_url=...")
     target_repo_url: "{{ git_repo_url | default(repo_url | default('')) }}"
     target_repo_branch: "{{ git_branch | default(branch | default('main')) }}"
+    # Jenkins passes the exact commit it has just tested (git_commit), so the server runs
+    # precisely that code even if someone pushes to the branch during the build.
+    target_repo_version: "{{ git_commit | default(target_repo_branch, true) }}"
 
     # Application secrets: extra-vars (db_password/jwt_secret) take precedence, fallback to env vars (DB_PASSWORD/JWT_SECRET)
     app_db_password: "{{ db_password | default(lookup('env', 'DB_PASSWORD') | default('', true), true) }}"
@@ -107,8 +110,13 @@
       git:
         repo: "{{ target_repo_url }}"
         dest: "{{ target_deploy_dir }}"
-        version: "{{ target_repo_branch }}"
+        version: "{{ target_repo_version }}"
         force: yes
+      register: git_checkout
+
+    - name: Show the commit that is being deployed
+      debug:
+        msg: "Deploying commit {{ git_checkout.after[:7] }} (requested: {{ target_repo_version }})"
 
     - name: Create runtime .env file
       copy:
@@ -129,18 +137,19 @@
           # Email Notification Configuration (Optional)
           EMAIL_USER={{ app_email_user }}
           EMAIL_PASS={{ app_email_pass }}
+
+          # Commit of the deployed code, reported by GET /api/health (checked by the Jenkins pipeline)
+          APP_VERSION={{ git_checkout.after[:7] }}
         owner: ubuntu
         group: ubuntu
         mode: '0600'
       no_log: true
 
-    - name: Stop any running application containers
-      shell: cd {{ target_deploy_dir }} && docker compose down
-      ignore_errors: yes
-
-    # Named volumes (mysql-data, uploads-data) are preserved: 'down' is run without -v.
+    # No 'docker compose down' first: 'up' only recreates containers whose image or settings changed,
+    # so the site is down for seconds, not minutes. The named volumes mysql-data and uploads-data
+    # (database and photos) are never removed by this playbook.
     - name: Build and start CivicHelp containers in detached mode
-      shell: cd {{ target_deploy_dir }} && docker compose up --build -d
+      shell: cd {{ target_deploy_dir }} && docker compose up --build -d --remove-orphans
       environment:
         # Newer Compose releases build through buildx bake, which can stop a
         # non-interactive build to ask for filesystem entitlements.
@@ -160,10 +169,18 @@
       uri:
         url: http://127.0.0.1/api/health
         status_code: 200
+        return_content: yes
       register: health
       retries: 30
       delay: 10
-      until: health.status == 200
+      until: health.status == 200 and (health.json.database | default('')) == 'connected'
+
+    # Old image layers pile up after every build; the 20 GB disk would slowly fill.
+    # Only DANGLING images are removed - never containers, volumes or the images in use.
+    - name: Remove dangling Docker images left over from previous builds
+      command: docker image prune -f
+      register: prune
+      changed_when: "'Total reclaimed space: 0B' not in prune.stdout"
 
     # Optional: provision staff logins (public registration only creates citizens).
     # Pass e.g. -e '{"staff_accounts":[{"role":"officer","name":"Ward Officer","email":"officer@civichelp.local","password":"..."}]}'
