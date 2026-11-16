@@ -34,7 +34,9 @@ foreach ($job in 'CivicHelp-Pipeline', 'CivicHelp-CI', 'CivicHelp-Deploy-AWS') {
         if (Test-Path $xml) {
             $text = Get-Content -Raw $xml
             # The build's own result is a top-level (2-space indented) element; nested ones belong to pipeline steps.
-            $m = [regex]::Match($text, '(?m)^  <result>([^<]+)</result>'); if ($m.Success) { $result = $m.Groups[1].Value }
+            # A running pipeline can already carry a provisional <result>; only <completed>true</completed> means finished.
+            $done = $text -match '(?m)^  <completed>true</completed>'
+            $m = [regex]::Match($text, '(?m)^  <result>([^<]+)</result>'); if ($done -and $m.Success) { $result = $m.Groups[1].Value }
             $d = [regex]::Match($text, '(?m)^  <duration>(\d+)</duration>'); if ($d.Success -and $result -ne 'RUNNING') { $dur = ('{0:N0} s' -f ([int64]$d.Groups[1].Value / 1000)) }
             $s = [regex]::Match($text, '<startTime>(\d+)</startTime>')
             if ($s.Success) { $when = ([DateTimeOffset]::FromUnixTimeMilliseconds([int64]$s.Groups[1].Value)).LocalDateTime.ToString('yyyy-MM-dd HH:mm') }
