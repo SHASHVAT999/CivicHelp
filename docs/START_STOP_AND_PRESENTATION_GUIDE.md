@@ -176,11 +176,30 @@ It takes 1 to 2 minutes. Jenkins is then at **http://localhost:8080**. Log in wi
 
 Without logging in, from the terminal you can show the same result:
 ```powershell
-.\scripts\status-jenkins.ps1 -ShowLog CivicHelp-CI
+.\scripts\status-jenkins.ps1 -ShowLog CivicHelp-CI           # results of the last 5 builds + end of the console log
+.\scripts\status-jenkins.ps1 -ShowLog CivicHelp-CI -Tail 200 # more of the console log
 ```
 
+You can also run a build **without logging in**. Jenkins must be stopped first, because the build is started by Jenkins itself during start-up:
+```powershell
+.\scripts\stop-jenkins.ps1
+.\scripts\start-jenkins.ps1 -RunBuild CI        # starts Jenkins, then runs one CivicHelp-CI build
+.\scripts\status-jenkins.ps1 -ShowLog CivicHelp-CI   # about 2 minutes later
+```
+(`-RunBuild Deploy` does the same for the AWS deployment job.) Remote triggers are deliberately not used: they would require weakening Jenkins security.
+
 ### Run the AWS deployment job (only when you want to show it)
-Preconditions: lab started, credentials refreshed (section 2), server **running** (section 3). Then in Jenkins click **CivicHelp-Deploy-AWS > Build with Parameters** and keep the defaults (leave `ADMIN_CIDR` empty: your IP is detected). Stages: *Checkout, AWS Preflight, Terraform Plan, Terraform Apply, Ansible Deploy, Smoke Test*. The plan stage **refuses to continue if it would add or destroy anything**. A deployment takes several minutes and briefly restarts the containers (the data stays).
+Preconditions: lab started, credentials refreshed (section 2), server **running** (section 3). Then in Jenkins click **CivicHelp-Deploy-AWS > Build with Parameters** and keep the defaults (leave `ADMIN_CIDR` empty: your IP is detected). Stages and what they prove:
+
+| Stage | What it checks or does |
+|---|---|
+| AWS Preflight | The AWS credentials work and `civichelp-server` is `running` (otherwise it stops with the fix to run) |
+| Terraform Plan | Plans against the **existing** state; **refuses to continue if the plan would add, replace or destroy anything** |
+| Terraform Apply | Applies exactly that saved plan (normally `0 added, 0 changed, 0 destroyed`) |
+| Ansible Deploy | Runs `ansible/deploy.yml` through WSL: pulls `main`, rebuilds the containers (volumes kept), waits for MySQL to be `healthy` and the API to answer |
+| Smoke Test | `[1/3]` API health, `[2/3]` MySQL answers a real query through the API, `[3/3]` the website returns the CivicHelp page. Any failure fails the build |
+
+A deployment takes about 4 minutes and restarts the containers for a moment (the data stays). In the console the secrets appear only as `****` (Jenkins masks them).
 
 ### Stop
 ```powershell
@@ -284,15 +303,27 @@ Your laptop (D:\CivicHelp)              GitHub (main)                  AWS (us-e
 
 ---
 
-## 11. What was tested (2026-11-16)
+## 11. What was tested (16 Nov 2026)
 
-Everything below was actually run on this laptop and on the real EC2 instance:
+Everything below was actually run on this laptop and against the real EC2 instance.
 
-- `update-aws-credentials.ps1`: a fake block is rejected and nothing is saved; an incomplete block is rejected; the genuine credentials are accepted, saved to a test file (other profiles preserved) and verified. Reading from the clipboard was not exercised with real credentials.
-- `status-civichelp.ps1`, `stop-civichelp.ps1`, `start-civichelp.ps1`: the real instance was stopped, then started again. It came back with a **different public IP**, all three containers restarted by themselves, and the website, API and database were healthy.
-- **Persistence:** the demo accounts created before the stop could log in after the restart.
-- `create-demo-accounts.ps1`: local Docker and AWS (over SSH through WSL), including a repeat run.
-- `update-ssh-access.ps1`: tested for the case where SSH is already allowed ("nothing to change"). The apply path was exercised earlier by hand (plan 0 add, 1 change, 0 destroy).
-- Jenkins: your existing installation started from the scripts, the two credentials and two jobs were created, and **CivicHelp-CI build #1 succeeded** from the GitHub Jenkinsfile (see status output in the final report).
+**Application on AWS**
+- An automated end-to-end test ran against the deployed site through Nginx: **43 of 43 checks passed**. It covered registration and login, a complaint with a photo, rejection of fake images, permissions for each role, officer assignment, worker resolution with an "after" photo, citizen reopening with a reason, re-resolution, citizen confirmation, and live Socket.IO events over WebSocket.
+- **Persistence across EC2 stop/start:** the complaints, statuses, worker assignment and both photo files were fingerprinted (SHA-256), the instance was stopped and started with the scripts, and everything was **identical** afterwards. The public IP changed and the containers restarted on their own.
+- Data also survived a full redeployment by Jenkins (containers rebuilt, named volumes kept).
 
-Not verified: delivery of resolution emails (no SMTP credentials are configured) and the *Reading credentials from the clipboard* path with real AWS credentials.
+**Scripts**
+- `start-civichelp.ps1`, `stop-civichelp.ps1`, `status-civichelp.ps1`: real stops and starts of the instance, including the status shown while stopped.
+- `update-aws-credentials.ps1`: a fake block is rejected and nothing is saved; an incomplete block is rejected; genuine credentials are accepted, saved (other profiles kept) and verified.
+- `create-demo-accounts.ps1`: locally and on AWS (SSH through WSL), including repeat runs.
+- `update-ssh-access.ps1`: the "already allowed, nothing to change" path. The plan-and-apply path was done earlier by hand with the same safeguards (plan `0 to add, 1 to change, 0 to destroy`).
+- `start-jenkins.ps1` (including `-RunBuild`), `stop-jenkins.ps1`, `status-jenkins.ps1`.
+
+**Jenkins**
+- Both jobs were created in your existing Jenkins by `start-jenkins.ps1`, together with the two encrypted credentials. Your other jobs were not changed and security was not weakened.
+- `CivicHelp-CI` and `CivicHelp-Deploy-AWS` both finished with a top-level **SUCCESS** on the final GitHub commit. The deploy smoke test was also run against a wrong target to confirm it **fails** when a check fails.
+
+**Not verified**
+- Delivery of resolution emails: no SMTP credentials are configured, so the app logs that it skipped the email.
+- `update-aws-credentials.ps1` reading from the **clipboard** with real credentials (the same parsing was tested from a file).
+- The Jenkins web pages (Build Now, Pipeline Overview, Credentials) were not opened with your login. The builds themselves were verified from Jenkins' build records and console logs.

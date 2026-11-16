@@ -148,6 +148,14 @@
       async: 1800
       poll: 30
 
+    - name: Wait for the MySQL container to report healthy
+      command: docker inspect --format "{% raw %}{{.State.Health.Status}}{% endraw %}" civichelp-db
+      register: db_health
+      retries: 30
+      delay: 6
+      until: db_health.stdout == 'healthy'
+      changed_when: false
+
     - name: Wait for the CivicHelp API to report healthy through Nginx
       uri:
         url: http://127.0.0.1/api/health

@@ -135,7 +135,11 @@ function Get-AppHealth {
             $h.Database = $true
             $body = $r.Content.Trim()
             if ($body -eq '[]') { $h.Complaints = 0 }
-            else { $h.Complaints = @($body | ConvertFrom-Json).Count }
+            else {
+                # PS 5.1 emits a JSON array as ONE pipeline object, so assign first, then count.
+                $list = $body | ConvertFrom-Json
+                $h.Complaints = @($list).Count
+            }
         }
     } catch {}
     return [pscustomobject]$h

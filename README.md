@@ -2,6 +2,8 @@
 
 CivicHelp is a full-stack civic issue reporting and municipal management platform. Citizens report local problems (potholes, broken streetlights, garbage dumps, open drains) with a map location and a photo. Ward officers assign field workers, workers upload photographic proof of the fix, and the citizen confirms the resolution or asks for it to be reopened. Every change appears live on the public map and dashboards.
 
+📘 **Starting, stopping, Jenkins and the presentation: [`docs/START_STOP_AND_PRESENTATION_GUIDE.md`](docs/START_STOP_AND_PRESENTATION_GUIDE.md)**
+
 ---
 
 ## 🌟 Key Features
@@ -165,9 +167,19 @@ Internet ──► Security group civichelp-sg
         └── Docker Compose: frontend (Nginx :80) → backend (:5001, internal) → MySQL (internal)
 ```
 
+> **Day-to-day use needs only the PowerShell scripts in [`scripts/`](scripts).** The full, step-by-step guide for starting, stopping, Jenkins, the demo and troubleshooting is [`docs/START_STOP_AND_PRESENTATION_GUIDE.md`](docs/START_STOP_AND_PRESENTATION_GUIDE.md). The manual Terraform and Ansible steps below are what the scripts and Jenkins run for you.
+
+| Script | Purpose |
+| :--- | :--- |
+| `scripts\update-aws-credentials.ps1` | Test and save fresh AWS Academy credentials |
+| `scripts\start-civichelp.ps1` / `stop-civichelp.ps1` / `status-civichelp.ps1` | Start, stop (nothing is deleted) and inspect the **existing** EC2 instance |
+| `scripts\update-ssh-access.ps1` | Allow SSH from your current IP (guarded Terraform plan) |
+| `scripts\create-demo-accounts.ps1` | Create citizen / officer / worker demo logins (local or AWS) |
+| `scripts\start-jenkins.ps1` / `stop-jenkins.ps1` / `status-jenkins.ps1` | Run and inspect the existing Jenkins |
+
 ### Prerequisites
 
-1. Start the Learner Lab and copy the **AWS CLI credentials** (access key, secret key, **session token**) into your AWS credentials file. They expire when the lab session ends, so check them with `aws sts get-caller-identity`.
+1. Start the Learner Lab and copy the **AWS CLI credentials** (access key, secret key, **session token**) with `scripts\update-aws-credentials.ps1`. They expire when the lab session ends.
 2. Terraform ≥ 1.0 and the AWS CLI. Ansible runs inside **WSL Ubuntu** on Windows.
 3. An SSH key pair (`ssh-keygen -t ed25519 -f civichelp-key -N ""`); its public key goes in `terraform.tfvars`.
 
@@ -200,17 +212,13 @@ terraform apply
 The EC2 instance clones the app from GitHub, so **push your changes first**.
 
 ```bash
-# inside WSL
-cp /mnt/d/AWSConfig/civichelp-key ~/.ssh/civichelp-key && chmod 600 ~/.ssh/civichelp-key
+# inside WSL (secrets via environment variables, never on the command line)
 cd /mnt/d/CivicHelp
-export DB_PASSWORD='...' JWT_SECRET='...'     # secrets via environment, never on the command line
-
-# The playbook targets the inventory group "civichelp", so an inline "IP," inventory matches nothing.
-printf '[civichelp]\n<EC2_IP> ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/civichelp-key\n' > /tmp/civichelp-inventory.ini
-ansible-playbook -i /tmp/civichelp-inventory.ini ansible/deploy.yml \
-  -e "ec2_ip=<EC2_IP>" \
-  -e "git_repo_url=https://github.com/SHASHVAT999/CivicHelp.git" -e "git_branch=main"
+set -a; . /mnt/d/AWSConfig/civichelp-deploy.env; set +a     # defines DB_PASSWORD and JWT_SECRET
+EC2_IP=<EC2_IP> SSH_KEY=/mnt/d/AWSConfig/civichelp-key bash ansible/run-deploy.sh
 ```
+
+`ansible/run-deploy.sh` builds the inventory the playbook needs (it targets the group `civichelp`; an inline `-i "IP,"` inventory matches no host), waits for SSH and runs `ansible/deploy.yml`. Jenkins uses the same script.
 
 Use the **same** `DB_PASSWORD` for every redeploy: MySQL fixes its root password when the data volume is first created, so changing it later makes the backend unable to connect.
 
@@ -218,12 +226,17 @@ The playbook adds 2 GB of swap (the React build needs it on a 1 GB t3.micro), in
 
 ### 3. Jenkins pipeline
 
-[`Jenkinsfile`](Jenkinsfile) stages: **Checkout → Validate → Build Images → [AWS Preflight → Terraform → Ansible Deploy → Smoke Test]**. The bracketed stages run only when `DEPLOY_TO_AWS` is ticked.
+Two **separate** pipelines, so a normal build can never change AWS:
 
-- A default run (`DEPLOY_TO_AWS` unticked) validates `docker-compose.yml`, Terraform formatting and the Ansible syntax, and builds both Docker images. It costs nothing on AWS.
-- Deployment reuses the existing state through `TF_DIR` (default `D:/CivicHelp/terraform`), checks that the AWS credentials are still valid, applies a saved plan, runs Ansible (natively on Linux, or through WSL on a Windows Jenkins), and checks `http://<ip>/api/health`.
-- Required Jenkins credentials (*Manage Jenkins → Credentials → System → Global*, kind **Secret text**): `CIVICHELP_DB_PASSWORD`, `CIVICHELP_JWT_SECRET`. They reach Ansible only as environment variables.
-- Windows agent requirements: Git for Windows `sh` in the `PATH` of the Jenkins process, Docker Desktop, `terraform`, `aws`, and a WSL distribution with Ansible.
+| Jenkins job | Pipeline file | Stages | Touches AWS |
+| :--- | :--- | :--- | :--- |
+| `CivicHelp-CI` | [`Jenkinsfile`](Jenkinsfile) | Checkout → Tool Check → Validate Compose → Validate Terraform → Validate Ansible → Build Docker Images → Test Images | No |
+| `CivicHelp-Deploy-AWS` | [`jenkins/Jenkinsfile.deploy`](jenkins/Jenkinsfile.deploy) | Checkout → AWS Preflight → Terraform Plan (guarded) → Terraform Apply → Ansible Deploy → Smoke Test | Yes |
+
+- The CI job validates `docker-compose.yml`, Terraform formatting and the Ansible syntax, builds both Docker images and tests them (backend syntax check, `nginx -t`). It costs nothing on AWS.
+- The deploy job re-uses the existing Terraform state (`TF_DIR`, default `D:/CivicHelp/terraform`), refuses to continue if the plan would add, replace or destroy anything, runs Ansible (natively on Linux, or through WSL on a Windows Jenkins) and checks `http://<ip>/api/health`.
+- `scripts\start-jenkins.ps1` starts the existing Jenkins and (re)creates both jobs and the Secret-text credentials `CIVICHELP_DB_PASSWORD` / `CIVICHELP_JWT_SECRET` through [`jenkins/init/civichelp-setup.groovy`](jenkins/init/civichelp-setup.groovy). Secrets reach Ansible only as environment variables and are masked in the console log.
+- Windows agent requirements: Git for Windows `sh` in the `PATH` of the Jenkins process, Docker Desktop, `terraform`, `aws`, and a WSL distribution with Ansible. `start-jenkins.ps1` sets this up.
 
 ---
 
