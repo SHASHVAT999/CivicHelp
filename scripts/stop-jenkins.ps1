@@ -32,7 +32,7 @@ if (-not $Force) {
         if (-not $last) { continue }
         $xml = Join-Path $last.FullName 'build.xml'
         if ((Test-Path $xml) -and ((Get-Date) - (Get-Item $xml).LastWriteTime).TotalHours -lt 2) {
-            if (-not (Select-String -Path $xml -Pattern '<result>' -Quiet)) { $running += "$($job.Name) #$($last.Name)" }
+            if (-not (Select-String -Path $xml -Pattern '^  <result>' -Quiet)) { $running += "$($job.Name) #$($last.Name)" }
         }
     }
     if ($running.Count -gt 0) {

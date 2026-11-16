@@ -10,10 +10,10 @@
  *
  * Before running:
  *   1. AWS Academy Learner Lab started and credentials refreshed
- *      (scripts\update-aws-credentials.ps1).
- *   2. EC2 instance running (scripts\start-civichelp.ps1).
+ *      (scripts/update-aws-credentials.ps1).
+ *   2. EC2 instance running (scripts/start-civichelp.ps1).
  *   3. Jenkins credentials CIVICHELP_DB_PASSWORD and CIVICHELP_JWT_SECRET exist
- *      (scripts\start-jenkins.ps1 creates them).
+ *      (scripts/start-jenkins.ps1 creates them).
  * ==============================================================================
  */
 
@@ -66,7 +66,7 @@ pipeline {
                 # AWS Academy session credentials expire when the lab session ends
                 aws sts get-caller-identity --query Arn --output text >/dev/null 2>&1 || {
                     echo "AWS credentials are missing or expired." >&2
-                    echo "Start the Learner Lab, then run: scripts\\update-aws-credentials.ps1" >&2
+                    echo "Start the Learner Lab, then run: scripts/update-aws-credentials.ps1" >&2
                     exit 1
                 }
                 echo "AWS credentials are valid."
@@ -74,7 +74,7 @@ pipeline {
                         --query "Reservations[].Instances[].State.Name" --output text)
                 echo "civichelp-server state: $STATE"
                 [ "$STATE" = "running" ] || {
-                    echo "The EC2 instance is not running. Start it first: scripts\\start-civichelp.ps1" >&2
+                    echo "The EC2 instance is not running. Start it first: scripts/start-civichelp.ps1" >&2
                     exit 1
                 }
                 '''

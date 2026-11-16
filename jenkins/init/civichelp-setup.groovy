@@ -55,7 +55,6 @@ try {
 try {
     def repo = System.getenv('CIVICHELP_REPO_URL') ?: 'https://github.com/SHASHVAT999/CivicHelp.git'
     def branch = System.getenv('CIVICHELP_BRANCH') ?: 'main'
-    def token = System.getenv('CIVICHELP_TRIGGER_TOKEN')
 
     def deployParams = [
         [name: 'GIT_REPO_URL', value: repo, desc: 'Repository the EC2 instance clones'],
@@ -67,9 +66,9 @@ try {
     ]
 
     def jobs = [
-        [name: 'CivicHelp-CI', script: 'Jenkinsfile', params: [], token: token,
+        [name: 'CivicHelp-CI', script: 'Jenkinsfile', params: [],
          desc: 'CI: validates Docker Compose, Terraform and Ansible and builds + tests the Docker images. Never touches AWS.'],
-        [name: 'CivicHelp-Deploy-AWS', script: 'jenkins/Jenkinsfile.deploy', params: deployParams, token: null,
+        [name: 'CivicHelp-Deploy-AWS', script: 'jenkins/Jenkinsfile.deploy', params: deployParams,
          desc: 'DEPLOYMENT: updates the EXISTING AWS EC2 instance with Terraform and Ansible. Run only when the Learner Lab is started and the instance is running (scripts\\start-civichelp.ps1).']
     ]
 
@@ -83,7 +82,6 @@ try {
                     "<description>${esc(p.desc)}</description><trim>true</trim></hudson.model.StringParameterDefinition>"
                 }.join('') + '</parameterDefinitions></hudson.model.ParametersDefinitionProperty>'
         }
-        def tokenXml = j.token ? "<authToken>${esc(j.token)}</authToken>" : ''
         def xml = """<?xml version='1.1' encoding='UTF-8'?>
 <flow-definition plugin="workflow-job">
   <description>${esc(j.desc)}</description>
@@ -103,11 +101,44 @@ try {
   </definition>
   <triggers/>
   <disabled>false</disabled>
-  ${tokenXml}
 </flow-definition>"""
         jenkins.createProjectFromXML(j.name, new ByteArrayInputStream(xml.getBytes('UTF-8')))
         log.info("CivicHelp setup: created job ${j.name}")
     }
 } catch (Throwable t) {
     log.severe("CivicHelp setup: job step failed: ${t}")
+}
+
+// ---------------------------------------------------------------- 3. optional one-off build
+// scripts\start-jenkins.ps1 -RunBuild CI|Deploy sets CIVICHELP_RUN_BUILD so a build starts once after boot.
+try {
+    def wanted = System.getenv('CIVICHELP_RUN_BUILD')
+    def jobName = ['CI': 'CivicHelp-CI', 'Deploy': 'CivicHelp-Deploy-AWS'][wanted]
+    log.info("CivicHelp setup: CIVICHELP_RUN_BUILD='${wanted}' -> job '${jobName}'")
+    if (jobName) {
+        def t = new Thread({
+            // A new thread runs as "anonymous"; with security enabled it could not even see the job.
+            // This is Jenkins' own start-up code, so run the scheduling step with system privileges.
+            def ctx = null
+            try {
+                Thread.sleep(25000)   // let Jenkins finish starting (executors, plugins) first
+                ctx = hudson.security.ACL.as2(hudson.security.ACL.SYSTEM2)
+                def job = Jenkins.get().getItem(jobName)
+                if (job) {
+                    def future = job.scheduleBuild2(0, new hudson.model.CauseAction(new hudson.model.Cause.RemoteCause('localhost', 'started by scripts/start-jenkins.ps1 -RunBuild')))
+                    log.info("CivicHelp setup: scheduled a build of ${jobName}: ${future != null}")
+                } else {
+                    log.warning("CivicHelp setup: job ${jobName} not found, no build scheduled")
+                }
+            } catch (Throwable e) {
+                log.severe("CivicHelp setup: scheduling the build failed: ${e}")
+            } finally {
+                if (ctx != null) { ctx.close() }
+            }
+        } as Runnable, 'civichelp-run-build')
+        t.setDaemon(true)
+        t.start()
+    }
+} catch (Throwable t) {
+    log.severe("CivicHelp setup: build step failed: ${t}")
 }

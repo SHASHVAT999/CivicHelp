@@ -13,11 +13,15 @@
     - the jobs CivicHelp-CI and CivicHelp-Deploy-AWS exist.
   Your other Jenkins jobs are never touched. Jenkins listens on http://localhost:8080 (this PC only).
 
-  Usage:  powershell -ExecutionPolicy Bypass -File scripts\start-jenkins.ps1 [-OpenBrowser]
+  Usage:  powershell -ExecutionPolicy Bypass -File scripts\start-jenkins.ps1 [-OpenBrowser] [-RunBuild CI|Deploy]
+
+  -RunBuild CI      starts Jenkins and immediately runs one CivicHelp-CI build (no login needed).
+  -RunBuild Deploy  does the same for the AWS deployment job (changes AWS - use deliberately).
 #>
 [CmdletBinding()]
 param(
     [switch]$OpenBrowser,
+    [ValidateSet('None', 'CI', 'Deploy')][string]$RunBuild = 'None',
     [int]$TimeoutSeconds = 300
 )
 . "$PSScriptRoot\_common.ps1"
@@ -29,7 +33,6 @@ $JenkinsHome = Join-Path $JenkinsBase 'shared\jenkins_home'
 $LogDir      = Join-Path $JenkinsBase 'shared\logs'
 $PidFile     = Join-Path $JenkinsBase 'shared\jenkins.pid'
 $JavaTmp     = 'D:\DevCaches\JavaTemp'
-$TokenFile   = Join-Path $script:AwsDir 'civichelp-jenkins-trigger.token'
 $Url         = 'http://localhost:8080'
 
 function Test-JenkinsUp {
@@ -59,13 +62,11 @@ if (-not (Test-Path $script:SecretsFile)) {
     Write-Ok "Created new secrets file $($script:SecretsFile)"
     Write-Warn 'If CivicHelp was already deployed to AWS with other secrets, copy those into this file first.'
 }
-if (-not (Test-Path $TokenFile)) {
-    $b = New-Object byte[] 16; (New-Object Security.Cryptography.RNGCryptoServiceProvider).GetBytes($b)
-    [IO.File]::WriteAllText($TokenFile, (($b | ForEach-Object { $_.ToString('x2') }) -join ''), (New-Object Text.UTF8Encoding $false))
-}
-$token = (Get-Content $TokenFile -TotalCount 1).Trim()
 
 if (Test-JenkinsUp) {
+    if ($RunBuild -ne 'None') {
+        Stop-WithError 'Jenkins is already running, so -RunBuild cannot be applied.' @('Log in at http://localhost:8080 and click "Build Now" on the job,', 'or run scripts\stop-jenkins.ps1 first and then start-jenkins.ps1 -RunBuild ' + $RunBuild)
+    }
     Write-Ok "Jenkins is already running at $Url"
     Write-Warn 'Jobs/credentials are only (re)created at start-up. Run stop-jenkins.ps1 then start-jenkins.ps1 if they are missing.'
 } else {
@@ -84,7 +85,7 @@ if (Test-JenkinsUp) {
     $env:JENKINS_HOME = $JenkinsHome
     $env:JAVA_HOME = $JavaHome
     $env:CIVICHELP_SECRETS_FILE = $script:SecretsFile
-    $env:CIVICHELP_TRIGGER_TOKEN = $token
+    if ($RunBuild -ne 'None') { $env:CIVICHELP_RUN_BUILD = $RunBuild } else { Remove-Item Env:CIVICHELP_RUN_BUILD -ErrorAction SilentlyContinue }
     $env:MSYS_NO_PATHCONV = '1'
     $extra = @('D:\Git\bin', 'D:\Git\usr\bin', 'D:\Git\mingw64\bin', 'C:\Program Files\Docker\Docker\resources\bin', 'D:\Terraform', 'D:\AWSCLI', (Join-Path $JavaHome 'bin'))
     $env:PATH = (($extra | Where-Object { Test-Path $_ }) -join ';') + ';' + $env:PATH
