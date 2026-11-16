@@ -3,6 +3,9 @@ import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { getStoredUser } from '../categories';
 
 const roleLabels = { citizen: 'Citizen', officer: 'Ward officer', worker: 'Field worker' };
+// Long label on wide screens, short one on phones so the bar never overflows
+const deskLabels = { citizen: ['My reports', 'Reports'], officer: ['Complaint desk', 'Desk'], worker: ['Work orders', 'Orders'] };
+const Label = ({ long, short }) => <><span className="lbl-long">{long}</span><span className="lbl-short">{short}</span></>;
 
 function Navbar() {
   const navigate = useNavigate();
@@ -17,44 +20,38 @@ function Navbar() {
     navigate('/login');
   };
 
-  const linkClass = ({ isActive }) => `navbar-link${isActive ? ' active' : ''}`;
+  const linkClass = ({ isActive }) => `nav-link${isActive ? ' active' : ''}`;
 
   return (
-    <nav className="navbar">
-      <Link to="/" className="navbar-brand-link" aria-label="CivicHelp home">
-        <span className="brand-mark">C</span>
-        <span className="navbar-brand">CivicHelp</span>
+    <header className="nav">
+      <Link to="/" className="nav-brand" aria-label="CivicHelp home">
+        <span className="plate" aria-hidden="true">CH</span>
+        <span className="nav-word">CivicHelp</span>
       </Link>
 
-      <div className="navbar-links">
-        <NavLink to="/" end className={linkClass}>Home</NavLink>
-        <NavLink to="/map" className={linkClass}>Map</NavLink>
+      <nav className="nav-links" aria-label="Main">
+        <NavLink to="/" end className={linkClass}>Overview</NavLink>
+        <NavLink to="/map" className={linkClass}><Label long="Live map" short="Map" /></NavLink>
         {token && (
           <NavLink to="/dashboard" className={linkClass}>
-            {user.role === 'citizen' ? 'My reports' : 'Dashboard'}
+            <Label long={(deskLabels[user.role] || deskLabels.citizen)[0]} short={(deskLabels[user.role] || deskLabels.citizen)[1]} />
           </NavLink>
         )}
-      </div>
+      </nav>
 
-      <div className="navbar-actions">
-        {!isStaff && (
-          <Link to="/report" className="btn btn-primary btn-small">
-            <span>Report<span className="navbar-hide-mobile"> an issue</span></span>
-          </Link>
+      <div className="nav-side">
+        {token && (
+          <div className="nav-user">
+            <b>{user.name}</b>
+            <span>{roleLabels[user.role] || user.role}</span>
+          </div>
         )}
-        {token ? (
-          <>
-            <span className="navbar-user navbar-hide-mobile">
-              {user.name}
-              {user.role && <span className="navbar-role">{roleLabels[user.role] || user.role}</span>}
-            </span>
-            <button type="button" onClick={logout} className="btn btn-outline btn-small">Log out</button>
-          </>
-        ) : (
-          <Link to="/login" className="btn btn-outline btn-small">Log in</Link>
-        )}
+        {!isStaff && <Link to="/report" className="btn btn-signal btn-sm"><Label long="Report a problem" short="Report" /></Link>}
+        {token
+          ? <button type="button" onClick={logout} className="btn btn-sm">Log out</button>
+          : <Link to="/login" className="btn btn-sm">Log in</Link>}
       </div>
-    </nav>
+    </header>
   );
 }
 

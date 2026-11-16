@@ -3,43 +3,457 @@ import { Link } from 'react-router-dom';
 import axios from 'axios';
 import io from 'socket.io-client';
 import { API_URL, SOCKET_URL, getImageUrl } from '../config';
-import { getStoredUser } from '../categories';
 import {
-  ShieldAlert, HardHat, AlertTriangle, Trash2, Waves, MapPin,
-  List, AlertOctagon, Wrench, CheckSquare, RefreshCw, XCircle,
-  Play, CheckCircle, Clock, Inbox, PartyPopper, User, CalendarDays,
-  UserPlus, Plus, Check, AlertCircle, FileText
-} from 'lucide-react';
+  getStoredUser, STATUS, StatusChip, RouteLine, PhotoPair, CategoryIcon,
+  refNo, formatDate, timeAgo, coords,
+} from '../categories';
+import { RefreshCw, X, Camera, ArrowLeft, Check } from 'lucide-react';
 
-const statusConfig = {
-  open: { color: '#c2410c', label: 'Open', bg: '#fff4ed', border: '#f8d3bf' },
-  in_progress: { color: '#a16207', label: 'In Progress', bg: '#fefbe8', border: '#f3e3a3' },
-  resolved: { color: '#15803d', label: 'Resolved', bg: '#f0fdf4', border: '#bbf7d0' },
-};
+const needsAttention = (c) =>
+  (c.status === 'open' && !c.assigned_to) ||
+  (c.citizen_confirmation_status === 'reopened' && c.status !== 'resolved');
 
-const getCategoryIcon = (category) => {
-  switch (category) {
-    case 'Pothole': return <AlertTriangle size={20} strokeWidth={2.5} color="#4d4d48" />;
-    case 'Broken Streetlight': return <AlertOctagon size={20} strokeWidth={2.5} color="#4d4d48" />;
-    case 'Garbage Dump': return <Trash2 size={20} strokeWidth={2.5} color="#4d4d48" />;
-    case 'Open Drain': return <Waves size={20} strokeWidth={2.5} color="#4d4d48" />;
-    default: return <MapPin size={20} strokeWidth={2.5} color="#4d4d48" />;
-  }
-};
+const isReopened = (c) => c.citizen_confirmation_status === 'reopened' && c.status !== 'resolved';
+const awaitingCitizen = (c) => c.status === 'resolved' && c.resolution_image_url && c.citizen_confirmation_status === 'pending';
 
-const formatDate = (dateStr) => {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
-  return isNaN(d.getTime())
-    ? ''
-    : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-};
+// ============================================================ shared pieces
+
+function Tally({ cells }) {
+  return (
+    <div className="tally">
+      {cells.map((c) => (
+        <div className="tally-cell" key={c.label}>
+          <div className="tally-num">{c.value}</div>
+          <div className="tally-label">
+            {c.status ? <StatusChip status={c.status} /> : <span className="chip chip-plain">{c.label}</span>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Filters({ value, onChange, options }) {
+  return (
+    <div className="filters" role="group" aria-label="Filter">
+      {options.map((o) => (
+        <button key={o.key} type="button" className={`filter${o.alarm ? ' filter-alarm' : ''}`}
+          aria-pressed={value === o.key} onClick={() => onChange(o.key)}>
+          {o.label}<span className="count">{o.count}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Empty({ title, text, children }) {
+  return (
+    <div className="empty">
+      <h3>{title}</h3>
+      <p>{text}</p>
+      {children}
+    </div>
+  );
+}
+
+function ReopenBox({ c }) {
+  if (!isReopened(c)) return null;
+  return (
+    <div className="alarm-box" role="note">
+      <b>Sent back by the citizen{c.citizen_feedback_at ? ` · ${formatDate(c.citizen_feedback_at)}` : ''}</b>
+      “{c.citizen_feedback || 'The citizen said the repair is not complete.'}”
+    </div>
+  );
+}
+
+// ============================================================ citizen: case files
+
+function CitizenView({ complaints, filter, setFilter, stats, onVerify, reopeningId, setReopeningId, reopeningFeedback, setReopeningFeedback, submittingVerification }) {
+  const pending = complaints.filter(awaitingCitizen);
+  const shown = (filter === 'all' ? complaints : complaints.filter((c) => c.status === filter))
+    .slice()
+    .sort((a, b) => Number(awaitingCitizen(b)) - Number(awaitingCitizen(a)));
+
+  return (
+    <>
+      {pending.length > 0 && (
+        <div className="notice notice-wait" role="status">
+          <span><b>{pending.length} {pending.length === 1 ? 'repair is' : 'repairs are'} waiting for your confirmation.</b> Compare the photos and tell the ward office whether the problem is really fixed.</span>
+        </div>
+      )}
+      <Filters value={filter} onChange={setFilter} options={[
+        { key: 'all', label: 'All', count: stats.total },
+        { key: 'open', label: 'Open', count: stats.open },
+        { key: 'in_progress', label: 'In progress', count: stats.in_progress },
+        { key: 'resolved', label: 'Fixed', count: stats.resolved },
+      ]} />
+
+      {shown.length === 0 ? (
+        filter === 'all'
+          ? <Empty title="No reports yet" text="Seen a pothole, a dead streetlight or an overflowing drain? File a report and follow it here until it is fixed.">
+              <Link to="/report" className="btn btn-signal">Report a problem</Link>
+            </Empty>
+          : <Empty title={`Nothing ${STATUS[filter]?.label.toLowerCase() || filter}`} text="None of your reports has this status right now.">
+              <button type="button" className="btn btn-sm" onClick={() => setFilter('all')}>Show all reports</button>
+            </Empty>
+      ) : shown.map((c) => (
+        <article className="case" key={c.id}>
+          <div className="case-meta">
+            <span className="ref">{refNo(c.id)}</span>
+            <span>Filed {formatDate(c.created_at)}</span><br />
+            <span>{timeAgo(c.created_at)}</span>
+          </div>
+          <div>
+            <div className="case-title">
+              <h2>{c.category}</h2>
+              <StatusChip status={c.status} large />
+            </div>
+            <p className="case-addr">{c.address || coords(c)}</p>
+            {c.description && <p className="case-desc">{c.description}</p>}
+            <RouteLine complaint={c} />
+
+            {(c.image_url || c.resolution_image_url) && (
+              <div className="case-block"><PhotoPair before={c.image_url} after={c.resolution_image_url} getUrl={getImageUrl} /></div>
+            )}
+            {c.resolution_notes && (
+              <div className="case-block quote"><cite>Note from {c.worker_name || 'the field team'}</cite>{c.resolution_notes}</div>
+            )}
+
+            {c.status === 'resolved' && c.citizen_confirmation_status === 'confirmed' && (
+              <div className="verify-done">You confirmed this repair. Thank you for closing the loop.</div>
+            )}
+            {isReopened(c) && (
+              <div className="verify-done verify-back">
+                You sent this back to the ward office{c.citizen_feedback ? <>: “{c.citizen_feedback}”</> : '.'} It is being worked on again.
+              </div>
+            )}
+            {awaitingCitizen(c) && (
+              <div className="verify">
+                <h3>Is it really fixed?</h3>
+                <p>The field team has filed a photo of the repair. Only you can close this report.</p>
+                {reopeningId === c.id ? (
+                  <>
+                    <label className="field">
+                      <span className="field-label">What is still wrong?</span>
+                      <textarea rows={3} value={reopeningFeedback} onChange={(e) => setReopeningFeedback(e.target.value)}
+                        placeholder="For example: the patch has already sunk after the rain." />
+                    </label>
+                    <div className="verify-actions">
+                      <button type="button" className="btn btn-alarm" disabled={submittingVerification || !reopeningFeedback.trim()}
+                        onClick={() => onVerify(c.id, 'reopen', reopeningFeedback)}>
+                        {submittingVerification ? 'Sending…' : 'Send back for more work'}
+                      </button>
+                      <button type="button" className="btn" onClick={() => { setReopeningId(null); setReopeningFeedback(''); }}>Cancel</button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="verify-actions">
+                    <button type="button" className="btn btn-done" disabled={submittingVerification} onClick={() => onVerify(c.id, 'confirm')}>
+                      <Check size={16} aria-hidden="true" /> Yes, it is fixed
+                    </button>
+                    <button type="button" className="btn btn-alarm" disabled={submittingVerification} onClick={() => setReopeningId(c.id)}>
+                      No, reopen it
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </article>
+      ))}
+    </>
+  );
+}
+
+// ============================================================ officer: triage queue + case detail
+
+function OfficerView({ complaints, workers, selectedWorker, setSelectedWorker, onAssign, onStart, onResolve }) {
+  const [view, setView] = useState('all');
+  const [selectedId, setSelectedId] = useState(null);
+
+  const counts = {
+    all: complaints.length,
+    attention: complaints.filter(needsAttention).length,
+    open: complaints.filter((c) => c.status === 'open').length,
+    in_progress: complaints.filter((c) => c.status === 'in_progress').length,
+    resolved: complaints.filter((c) => c.status === 'resolved').length,
+  };
+  const list = view === 'all' ? complaints
+    : view === 'attention' ? complaints.filter(needsAttention)
+      : complaints.filter((c) => c.status === view);
+  const current = list.find((c) => c.id === selectedId) || list[0];
+
+  const select = (id) => {
+    setSelectedId(id);
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  };
+
+  return (
+    <>
+      <Filters value={view} onChange={(v) => { setView(v); setSelectedId(null); }} options={[
+        { key: 'attention', label: 'Needs attention', count: counts.attention, alarm: counts.attention > 0 },
+        { key: 'all', label: 'All', count: counts.all },
+        { key: 'open', label: 'Open', count: counts.open },
+        { key: 'in_progress', label: 'In progress', count: counts.in_progress },
+        { key: 'resolved', label: 'Fixed', count: counts.resolved },
+      ]} />
+
+      {list.length === 0 ? (
+        <Empty title={view === 'attention' ? 'Nothing needs you' : 'Queue is empty'}
+          text={view === 'attention' ? 'Every open report has a worker and nothing has been sent back.' : 'No reports match this view.'} />
+      ) : (
+        <div className={`triage${selectedId ? ' has-selection' : ''}`}>
+          <nav className="queue" aria-label="Complaint queue">
+            {list.map((c) => (
+              <button key={c.id} type="button" className="row-btn" aria-current={current && current.id === c.id}
+                onClick={() => select(c.id)}>
+                <span>
+                  <span className="row-top"><span>{refNo(c.id)}</span><span>{timeAgo(c.created_at)}</span></span>
+                  <span className="row-title">{c.category}</span>
+                </span>
+                <span className="row-side"><StatusChip status={c.status} /></span>
+                <span className="row-addr clamp-1">{c.address || coords(c)}</span>
+                <span className="row-flags">
+                  {isReopened(c) && <span className="flag flag-alarm">Reopened</span>}
+                  {c.status === 'open' && !c.assigned_to && <span className="flag flag-open">Unassigned</span>}
+                  {awaitingCitizen(c) && <span className="flag flag-wait">Awaiting citizen</span>}
+                  {c.worker_name && <span className="flag">{c.worker_name}</span>}
+                </span>
+              </button>
+            ))}
+          </nav>
+
+          {current && (
+            <section className="detail" aria-label={`Report ${refNo(current.id)}`}>
+              <button type="button" className="btn btn-sm back-link" onClick={() => setSelectedId(null)}>
+                <ArrowLeft size={15} aria-hidden="true" /> Queue
+              </button>
+              <div className="detail-head">
+                <div>
+                  <span className="kicker">{refNo(current.id)} · filed {formatDate(current.created_at, true)}</span>
+                  <h2>{current.category}</h2>
+                </div>
+                <StatusChip status={current.status} large />
+              </div>
+
+              <dl className="facts">
+                <div className="fact"><dt>Reported by</dt><dd>{current.citizen_name || '—'}</dd></div>
+                <div className="fact"><dt>Field worker</dt><dd>{current.worker_name || 'Not assigned'}</dd></div>
+                <div className="fact"><dt>Location</dt><dd>{current.address || 'Pinned on the map'}<br /><span className="mono muted">{coords(current)}</span></dd></div>
+              </dl>
+
+              {isReopened(current) && <div className="detail-section"><ReopenBox c={current} /></div>}
+
+              {current.description && (
+                <div className="detail-section">
+                  <p className="section-label">Citizen's description</p>
+                  <p>{current.description}</p>
+                </div>
+              )}
+
+              <div className="detail-section">
+                <p className="section-label">Progress</p>
+                <RouteLine complaint={current} />
+              </div>
+
+              {(current.image_url || current.resolution_image_url || current.resolution_notes) && (
+                <div className="detail-section">
+                  <p className="section-label">Evidence</p>
+                  <PhotoPair before={current.image_url} after={current.resolution_image_url} getUrl={getImageUrl} />
+                  {current.resolution_notes && (
+                    <div className="quote" style={{ marginTop: 14 }}><cite>Resolution note</cite>{current.resolution_notes}</div>
+                  )}
+                </div>
+              )}
+
+              <div className="detail-section">
+                <p className="section-label">Actions</p>
+                {current.status === 'resolved' ? (
+                  <p className="muted small">
+                    Closed with photo proof. {current.citizen_confirmation_status === 'confirmed'
+                      ? 'The citizen has confirmed the repair.'
+                      : current.citizen_confirmation_status === 'pending' ? 'Waiting for the citizen to confirm.' : ''}
+                  </p>
+                ) : (
+                  <div className="actions">
+                    <div className="assign">
+                      <label className="field" style={{ margin: 0 }}>
+                        <span className="field-label">{current.assigned_to ? 'Reassign to' : 'Assign to'}</span>
+                        <select value={selectedWorker[current.id] || ''}
+                          onChange={(e) => setSelectedWorker({ ...selectedWorker, [current.id]: e.target.value })}>
+                          <option value="">Choose a field worker…</option>
+                          {workers.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                        </select>
+                      </label>
+                      <button type="button" className="btn btn-ink" onClick={() => onAssign(current.id)}>
+                        {current.assigned_to ? 'Reassign' : 'Assign'}
+                      </button>
+                    </div>
+                    {current.status === 'open' && (
+                      <button type="button" className="btn" onClick={() => onStart(current.id)}>Start without worker</button>
+                    )}
+                    {current.status === 'in_progress' && (
+                      <button type="button" className="btn btn-signal" onClick={() => onResolve(current)}>
+                        <Camera size={16} aria-hidden="true" /> Close with photo
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ============================================================ worker: work orders
+
+function WorkerView({ complaints, onResolve }) {
+  const active = complaints.filter((c) => c.status !== 'resolved')
+    .slice().sort((a, b) => Number(isReopened(b)) - Number(isReopened(a)));
+  const done = complaints.filter((c) => c.status === 'resolved');
+
+  return (
+    <>
+      {active.length === 0 ? (
+        <Empty title="No open work orders" text="Nothing is assigned to you right now. New assignments appear here the moment the ward officer makes them." />
+      ) : (
+        <div className="orders">
+          {active.map((c) => (
+            <article key={c.id} className={`order${isReopened(c) ? ' order-reopened' : ''}`}>
+              <div className="order-strip">
+                <span>Work order {refNo(c.id)}</span>
+                {isReopened(c) ? <span>Returned by citizen</span> : <StatusChip status={c.status} />}
+              </div>
+              <div className="order-body">
+                {isReopened(c) && <div style={{ marginBottom: 14 }}><ReopenBox c={c} /></div>}
+                <h2><CategoryIcon category={c.category} size={28} /> {c.category}</h2>
+                <p className="order-addr">{c.address || 'Location pinned on the map'}</p>
+                <p className="order-coords">
+                  <span>{coords(c)}</span>
+                  <a href={`https://www.openstreetmap.org/?mlat=${c.latitude}&mlon=${c.longitude}#map=18/${c.latitude}/${c.longitude}`}
+                    target="_blank" rel="noopener noreferrer">Open in map</a>
+                </p>
+                {c.image_url && (
+                  <a className="order-photo" href={getImageUrl(c.image_url)} target="_blank" rel="noopener noreferrer">
+                    <img src={getImageUrl(c.image_url)} alt="Photo of the problem when it was reported" loading="lazy" />
+                    <span className="photo-tag">Before</span>
+                  </a>
+                )}
+                {c.description && (
+                  <div className="quote" style={{ margin: '14px 0' }}><cite>Reported by {c.citizen_name || 'a citizen'} · {formatDate(c.created_at)}</cite>{c.description}</div>
+                )}
+              </div>
+              <div className="order-foot">
+                {c.status === 'in_progress' ? (
+                  <button type="button" className="btn btn-signal btn-lg btn-block" onClick={() => onResolve(c)}>
+                    <Camera size={18} aria-hidden="true" /> Close with photo proof
+                  </button>
+                ) : (
+                  <span className="flag flag-wait">Waiting for the ward officer to start it</span>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {done.length > 0 && (
+        <>
+          <div className="sub-head"><h2>Completed</h2><span className="kicker">{done.length} closed with proof</span></div>
+          <div className="done-list">
+            {done.map((c) => (
+              <div className="done-row" key={c.id}>
+                {c.resolution_image_url
+                  ? <a href={getImageUrl(c.resolution_image_url)} target="_blank" rel="noopener noreferrer"><img src={getImageUrl(c.resolution_image_url)} alt="Your photo of the finished repair" loading="lazy" /></a>
+                  : <span className="noimg" />}
+                <div>
+                  <span className="mono muted">{refNo(c.id)} · fixed {formatDate(c.resolved_at)}</span>
+                  <div className="row-title">{c.category}</div>
+                  <div className="small muted clamp-1">{c.address || coords(c)}</div>
+                </div>
+                <span>
+                  {c.citizen_confirmation_status === 'confirmed' && <span className="flag flag-ok">Confirmed by citizen</span>}
+                  {c.citizen_confirmation_status === 'pending' && <span className="flag flag-wait">Awaiting citizen</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+// ============================================================ resolution sheet (officer + worker)
+
+function ResolutionSheet({ complaint: c, filePreview, file, notes, setNotes, error, submitting, onFile, onSubmit, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div className="sheet-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <form className="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" onSubmit={onSubmit}>
+        <div className="sheet-head">
+          <div>
+            <p className="kicker">Close work order {refNo(c.id)}</p>
+            <h2 id="sheet-title">{c.category}</h2>
+            <p className="small" style={{ color: '#c9c6ba' }}>{c.address || coords(c)}</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close"><X size={18} /></button>
+        </div>
+        <div className="sheet-body">
+          {error && <div className="notice notice-error" role="alert">{error}</div>}
+          <p className="small" style={{ marginBottom: 16 }}>
+            A photo of the finished work is required. The citizen will compare it with their original photo before the report is closed.
+          </p>
+          <label className="field">
+            <span className="field-label"><b>A</b> Photo of the repair <span className="field-hint">required · JPEG, PNG or WebP, max 5 MB</span></span>
+            <span className="drop">
+              {filePreview
+                ? <img className="drop-thumb" src={filePreview} alt="Selected repair photo" />
+                : <span className="drop-box"><Camera size={26} strokeWidth={1.5} aria-hidden="true" /></span>}
+              <span>
+                <b>{file ? 'Photo attached' : 'Take or choose a photo'}</b>
+                <span className="small muted">{file ? `${file.name} — click to replace` : 'The "after" picture'}</span>
+              </span>
+              <input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" onChange={onFile} />
+            </span>
+          </label>
+          <label className="field">
+            <span className="field-label"><b>B</b> What was done <span className="field-hint">optional</span></span>
+            <textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)}
+              placeholder="For example: filled with cold-mix asphalt and compacted." />
+          </label>
+          {c.image_url && (
+            <>
+              <p className="section-label">For comparison: the original report</p>
+              <PhotoPair before={c.image_url} getUrl={getImageUrl} />
+            </>
+          )}
+        </div>
+        <div className="sheet-foot">
+          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn btn-done" disabled={submitting || !file}>
+            {submitting ? <><RefreshCw size={15} className="spin" aria-hidden="true" /> Filing…</> : <><Check size={16} aria-hidden="true" /> File proof and close</>}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ============================================================ page
 
 function Dashboard() {
   const [complaints, setComplaints] = useState([]);
   const [workers, setWorkers] = useState([]);
   const [filter, setFilter] = useState('all');
-  const [assigningId, setAssigningId] = useState(null);
   const [selectedWorker, setSelectedWorker] = useState({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -47,7 +461,7 @@ function Dashboard() {
   const [live, setLive] = useState(false);
   const [notice, setNotice] = useState(null);
 
-  // Resolution modal state for staff (officer & worker)
+  // Resolution sheet state for staff (officer & worker)
   const [resolvingComplaint, setResolvingComplaint] = useState(null);
   const [resolutionFile, setResolutionFile] = useState(null);
   const [resolutionFilePreview, setResolutionFilePreview] = useState(null);
@@ -135,16 +549,15 @@ function Dashboard() {
   };
 
   const assignWorker = async (complaintId) => {
-    if (!selectedWorker[complaintId]) return showNotice('error', 'Please select a field worker first.');
+    if (!selectedWorker[complaintId]) return showNotice('error', 'Choose a field worker first.');
     try {
       const res = await axios.patch(
         `${API_URL}/complaints/${complaintId}/assign`,
         { worker_id: selectedWorker[complaintId] },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setAssigningId(null);
       setComplaints(prev => prev.map(c => c.id === complaintId ? res.data : c));
-      showNotice('success', `Complaint #${complaintId} assigned to ${res.data.worker_name || 'the selected worker'}.`);
+      showNotice('success', `${refNo(complaintId)} assigned to ${res.data.worker_name || 'the selected worker'}.`);
     } catch (err) {
       showNotice('error', err.response?.data?.error || 'Failed to assign the complaint.');
     }
@@ -164,13 +577,21 @@ function Dashboard() {
             : c
         )
       );
-      showNotice('success', `Complaint #${id} moved to ${statusConfig[status]?.label || status}.`);
+      showNotice('success', `${refNo(id)} moved to ${STATUS[status]?.label.toLowerCase() || status}.`);
     } catch (err) {
       showNotice('error', err.response?.data?.error || 'Failed to update status.');
     }
   };
 
   // Resolution workflow handlers (staff)
+  const openResolution = (c) => {
+    setResolvingComplaint(c);
+    setResolutionFile(null);
+    setResolutionFilePreview(null);
+    setResolutionNotes('');
+    setResolutionError(null);
+  };
+
   const handleResolutionFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -216,7 +637,7 @@ function Dashboard() {
         }
       );
       setComplaints(prev => prev.map(c => c.id === resolvingComplaint.id ? res.data : c));
-      showNotice('success', `Complaint #${resolvingComplaint.id} resolved. The citizen has been asked to verify the fix.`);
+      showNotice('success', `${refNo(resolvingComplaint.id)} closed with proof. The citizen has been asked to confirm.`);
       closeResolutionModal();
     } catch (err) {
       setResolutionError(err.response?.data?.error || 'Failed to submit resolution. Please try again.');
@@ -247,8 +668,8 @@ function Dashboard() {
       setReopeningId(null);
       setReopeningFeedback('');
       showNotice('success', action === 'confirm'
-        ? 'Thank you! You confirmed this issue is fixed.'
-        : 'Reopen request sent. The ward team has been notified.');
+        ? 'Thank you. You confirmed the repair and the report is closed.'
+        : 'Sent back. The ward office can see your reason.');
     } catch (err) {
       showNotice('error', err.response?.data?.error || 'Failed to submit verification.');
     } finally {
@@ -256,7 +677,6 @@ function Dashboard() {
     }
   };
 
-  const filtered = filter === 'all' ? complaints : complaints.filter(c => c.status === filter);
   const stats = {
     total: complaints.length,
     open: complaints.filter(c => c.status === 'open').length,
@@ -264,1043 +684,85 @@ function Dashboard() {
     resolved: complaints.filter(c => c.status === 'resolved').length,
   };
 
-  const roleMeta = {
-    citizen: {
-      badgeIcon: <FileText size={16} />,
-      badgeLabel: 'Citizen Portal',
-      title: 'My Reported Complaints',
-      subtitle: 'Track resolution progress, verify staff repairs, and monitor your civic reports in real-time.'
-    },
-    officer: {
-      badgeIcon: <ShieldAlert size={16} />,
-      badgeLabel: 'Ward Officer Dashboard',
-      title: 'Complaint Management',
-      subtitle: 'Overview of civic issues, assignments, staff resolution proof, and citizen confirmations.'
-    },
-    worker: {
-      badgeIcon: <HardHat size={16} />,
-      badgeLabel: 'Field Worker Dashboard',
-      title: 'My Assigned Tasks',
-      subtitle: 'Review assignments, submit photographic resolution proof, and address reopened complaints.'
-    }
-  }[user.role] || {
-    badgeIcon: <FileText size={16} />,
-    badgeLabel: 'Citizen Portal',
-    title: 'My Reported Complaints',
-    subtitle: 'Track your reported civic issues.'
-  };
+  const role = ['officer', 'worker'].includes(user.role) ? user.role : 'citizen';
+  const head = {
+    citizen: { kicker: 'Citizen · case files', title: 'My reports' },
+    officer: { kicker: 'Ward office · complaint desk', title: 'Complaint desk' },
+    worker: { kicker: 'Field team · assigned to you', title: 'Work orders' },
+  }[role];
+
+  const tally = role === 'worker'
+    ? [
+      { label: 'Assigned to you', value: stats.total },
+      { label: 'Active', value: stats.total - stats.resolved },
+      { label: 'Reopened', value: complaints.filter(isReopened).length },
+      { label: 'Completed', value: stats.resolved },
+    ]
+    : [
+      { label: role === 'officer' ? 'All reports' : 'Reports filed', value: stats.total },
+      { status: 'open', label: 'Open', value: stats.open },
+      { status: 'in_progress', label: 'In progress', value: stats.in_progress },
+      { status: 'resolved', label: 'Fixed', value: stats.resolved },
+    ];
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 64px)', background: '#f7f7f4', padding: '32px 16px' }}>
-      <div style={{ maxWidth: '960px', margin: '0 auto' }}>
-
-        {/* Action feedback toast */}
-        {notice && (
-          <div role="status" style={{
-            position: 'fixed', top: '80px', left: '50%', transform: 'translateX(-50%)',
-            zIndex: 2500, maxWidth: 'calc(100vw - 32px)',
-            display: 'flex', alignItems: 'center', gap: '10px',
-            padding: '12px 18px', borderRadius: '8px', fontSize: '14px', fontWeight: '600',
-            background: notice.type === 'success' ? '#f0fdf4' : '#fff4ed',
-            color: notice.type === 'success' ? '#15803d' : '#b91c1c',
-            border: `1px solid ${notice.type === 'success' ? '#bbf7d0' : '#f8d3bf'}`,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.12)'
-          }}>
-            {notice.type === 'success' ? <CheckCircle size={18} /> : <AlertCircle size={18} />}
-            <span>{notice.text}</span>
-            <button onClick={() => setNotice(null)} aria-label="Dismiss" style={{
-              background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', display: 'flex'
-            }}><XCircle size={16} /></button>
-          </div>
-        )}
-
-        {/* Header Section */}
-        <div style={{
-          marginBottom: '32px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          flexWrap: 'wrap',
-          gap: '16px'
-        }}>
-          <div>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: '6px',
-              color: '#66665f', fontSize: '13px', fontWeight: '600',
-              marginBottom: '10px'
-            }}>
-              {roleMeta.badgeIcon}
-              {roleMeta.badgeLabel}
-              <span title={live ? 'Receiving real-time updates' : 'Real-time connection unavailable'} style={{
-                display: 'inline-flex', alignItems: 'center', gap: '5px', marginLeft: '8px',
-                padding: '2px 8px', borderRadius: '100px', fontSize: '11px', fontWeight: '700',
-                background: live ? '#f0fdf4' : '#f1f1ee', color: live ? '#15803d' : '#8f8e86',
-                border: `1px solid ${live ? '#bbf7d0' : '#e3e2dc'}`
-              }}>
-                <span style={{
-                  width: '6px', height: '6px', borderRadius: '50%',
-                  background: live ? '#15803d' : '#8f8e86',
-                  animation: live ? 'pulse 2s infinite' : 'none'
-                }} />
-                {live ? 'Live' : 'Offline'}
-              </span>
-            </div>
-            <h2 style={{ fontSize: '28px', fontWeight: '700', color: '#1c1c1a', letterSpacing: '-0.5px', margin: 0 }}>
-              {roleMeta.title}
-            </h2>
-            <p style={{ color: '#555', fontSize: '14px', marginTop: '6px', maxWidth: '580px' }}>
-              {roleMeta.subtitle}
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => fetchComplaints(true)}
-              disabled={refreshing}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '8px',
-                padding: '9px 16px', background: 'white', border: '1px solid #d4d3cc',
-                borderRadius: '100px', fontSize: '13px', fontWeight: '600', color: '#3a3a36',
-                cursor: refreshing ? 'not-allowed' : 'pointer', transition: 'all 0.2s',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
-              }}
-            >
-              <RefreshCw size={14} className={refreshing ? 'spin' : ''} />
-              {refreshing ? 'Refreshing...' : 'Refresh'}
-            </button>
-
-            {user.role === 'citizen' && (
-              <Link to="/report" style={{ textDecoration: 'none' }}>
-                <button style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '8px',
-                  padding: '9px 18px', background: '#2451b7', color: 'white',
-                  border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: '600',
-                  cursor: 'pointer'
-                }}>
-                  <Plus size={16} /> Report an issue
-                </button>
-              </Link>
-            )}
-          </div>
+    <main className="desk-page">
+      {notice && (
+        <div className={`toast${notice.type === 'success' ? '' : ' toast-error'}`} role="status">
+          <span>{notice.text}</span>
+          <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss"><X size={16} /></button>
         </div>
+      )}
 
-        {/* Error Banner */}
-        {error && (
-          <div style={{
-            background: '#fff4ed', border: '1px solid #f8d3bf', borderRadius: '8px',
-            padding: '16px 20px', marginBottom: '24px',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
-            flexWrap: 'wrap'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <AlertCircle size={20} color="#c2410c" />
-              <span style={{ color: '#991b1b', fontSize: '14px', fontWeight: '500' }}>{error}</span>
-            </div>
-            <button
-              onClick={() => fetchComplaints()}
-              style={{
-                background: '#c2410c', color: 'white', border: 'none',
-                borderRadius: '6px', padding: '6px 14px', fontSize: '13px',
-                fontWeight: '600', cursor: 'pointer'
-              }}
-            >
-              Retry
-            </button>
-          </div>
-        )}
-
-        {/* Pastel Stats Cards */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-          gap: '16px',
-          marginBottom: '32px'
-        }}>
-          {[
-            { label: 'Total Reports', count: stats.total, icon: <List size={18} color="#66665f" />, bg: '#ffffff' },
-            { label: 'Open Issues', count: stats.open, icon: <AlertOctagon size={18} color="#66665f" />, bg: '#ffffff' },
-            { label: 'In Progress', count: stats.in_progress, icon: <Wrench size={18} color="#66665f" />, bg: '#ffffff' },
-            { label: 'Resolved', count: stats.resolved, icon: <CheckSquare size={18} color="#66665f" />, bg: '#ffffff' },
-          ].map(s => (
-            <div key={s.label} style={{
-              background: s.bg,
-              border: '1px solid #e3e2dc',
-              borderRadius: '8px', padding: '20px',
-              display: 'flex', flexDirection: 'column', gap: '12px'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '13px', fontWeight: '500', color: '#66665f' }}>{s.label}</span>
-                {s.icon}
-              </div>
-              <div style={{ fontSize: '30px', fontWeight: '700', color: '#1c1c1a', lineHeight: 1 }}>
-                {s.count}
-              </div>
-            </div>
-          ))}
+      <header className="desk-head">
+        <div>
+          <p className="kicker">{head.kicker}</p>
+          <h1>{head.title}</h1>
         </div>
-
-        {/* Filter Tabs */}
-        <div style={{
-          borderBottom: '1px solid #e3e2dc', marginBottom: '24px',
-          display: 'flex', gap: '20px', overflowX: 'auto'
-        }}>
-          {[
-            { key: 'all', label: 'All Complaints', count: stats.total },
-            { key: 'open', label: 'Open', count: stats.open },
-            { key: 'in_progress', label: 'In Progress', count: stats.in_progress },
-            { key: 'resolved', label: 'Resolved', count: stats.resolved },
-          ].map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setFilter(tab.key)}
-              style={{
-                background: 'none', border: 'none',
-                padding: '12px 4px',
-                borderBottom: filter === tab.key ? '2px solid #1c1c1a' : '2px solid transparent',
-                color: filter === tab.key ? '#1c1c1a' : '#66665f',
-                cursor: 'pointer', fontSize: '14px', fontWeight: '600', transition: 'all 0.2s',
-                marginBottom: '-1px', display: 'flex', alignItems: 'center', gap: '8px',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              <span>{tab.label}</span>
-              <span style={{
-                fontSize: '11px',
-                padding: '2px 7px',
-                borderRadius: '10px',
-                background: filter === tab.key ? '#1c1c1a' : '#f1f1ee',
-                color: filter === tab.key ? 'white' : '#66665f'
-              }}>
-                {tab.count}
-              </span>
-            </button>
-          ))}
+        <div className="desk-head-side">
+          <span className={`live${live ? ' live-on' : ''}`} title={live ? 'Receiving real-time updates' : 'Real-time connection unavailable'}>
+            <i aria-hidden="true" />{live ? 'Live' : 'Offline'}
+          </span>
+          <button type="button" className="btn btn-sm" onClick={() => fetchComplaints(true)} disabled={refreshing}>
+            <RefreshCw size={14} className={refreshing ? 'spin' : ''} aria-hidden="true" />
+            {refreshing ? 'Refreshing' : 'Refresh'}
+          </button>
         </div>
+      </header>
 
-        {/* Loading Spinner State */}
-        {loading && complaints.length === 0 ? (
-          <div style={{
-            textAlign: 'center', padding: '64px 20px',
-            background: 'white', border: '1px solid #e3e2dc', borderRadius: '8px'
-          }}>
-            <RefreshCw size={32} color="#66665f" className="spin" style={{ margin: '0 auto 16px' }} />
-            <h3 style={{ fontSize: '16px', color: '#1c1c1a', fontWeight: '600', marginBottom: '4px' }}>
-              Loading complaints...
-            </h3>
-            <p style={{ fontSize: '13px', color: '#66665f' }}>
-              Please wait while we retrieve the latest information.
-            </p>
-          </div>
-        ) : (
-          /* Complaints List View */
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {filtered.map(c => {
-              const sc = statusConfig[c.status] || { color: '#66665f', label: c.status, bg: '#f1f1ee', border: '#e3e2dc' };
+      <Tally cells={tally} />
 
-              return (
-                <div key={c.id} className="dash-card" style={{
-                  background: 'white',
-                  border: '1px solid #e3e2dc',
-                  borderRadius: '8px', padding: '24px',
-                  display: 'flex', gap: '20px', alignItems: 'flex-start',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                  transition: 'all 0.2s'
-                }}>
-                  {/* Category Icon */}
-                  <div className="dash-cat-icon" style={{
-                    background: '#f1f1ee', width: '44px', height: '44px',
-                    borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0
-                  }}>
-                    {getCategoryIcon(c.category)}
-                  </div>
+      {error && (
+        <div className="notice notice-error" role="alert">
+          <span style={{ flex: 1 }}>{error}</span>
+          <button type="button" className="btn btn-sm" onClick={() => fetchComplaints()}>Retry</button>
+        </div>
+      )}
 
-                  {/* Main Content Area */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      display: 'flex', justifyContent: 'space-between',
-                      alignItems: 'flex-start', marginBottom: '8px', flexWrap: 'wrap', gap: '8px'
-                    }}>
-                      <div>
-                        <h3 style={{ fontSize: '17px', fontWeight: '700', color: '#1c1c1a', margin: 0 }}>
-                          {c.category}
-                        </h3>
+      {loading && complaints.length === 0 ? (
+        <div aria-busy="true">
+          <div className="loading-line" />
+          <p className="kicker">Loading reports…</p>
+        </div>
+      ) : role === 'officer' ? (
+        <OfficerView complaints={complaints} workers={workers}
+          selectedWorker={selectedWorker} setSelectedWorker={setSelectedWorker}
+          onAssign={assignWorker} onStart={(id) => updateStatus(id, 'in_progress')} onResolve={openResolution} />
+      ) : role === 'worker' ? (
+        <WorkerView complaints={complaints} onResolve={openResolution} />
+      ) : (
+        <CitizenView complaints={complaints} filter={filter} setFilter={setFilter} stats={stats}
+          onVerify={handleVerify} reopeningId={reopeningId} setReopeningId={setReopeningId}
+          reopeningFeedback={reopeningFeedback} setReopeningFeedback={setReopeningFeedback}
+          submittingVerification={submittingVerification} />
+      )}
 
-                        {/* Metadata Row */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '6px', flexWrap: 'wrap' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px', color: '#66665f' }}>
-                            <CalendarDays size={14} />
-                            {formatDate(c.created_at)}
-                          </div>
-                          {c.address && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px', color: '#66665f' }}>
-                              <MapPin size={14} />
-                              {c.address}
-                            </div>
-                          )}
-                          {c.citizen_name && user.role !== 'citizen' && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px', color: '#66665f' }}>
-                              <User size={14} />
-                              Reported by {c.citizen_name}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Status Badges Header Row */}
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                        {/* Confirmation Badge for Resolved issues (only when resolution proof exists and not_required is not set) */}
-                        {c.status === 'resolved' && c.citizen_confirmation_status && c.citizen_confirmation_status !== 'not_required' && c.resolution_image_url && (
-                          <div style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '5px',
-                            padding: '4px 10px', borderRadius: '100px', fontSize: '11px', fontWeight: '700',
-                            background: c.citizen_confirmation_status === 'confirmed' ? '#f0fdf4' : c.citizen_confirmation_status === 'reopened' ? '#fff4ed' : '#fefbe8',
-                            color: c.citizen_confirmation_status === 'confirmed' ? '#15803d' : c.citizen_confirmation_status === 'reopened' ? '#dc2626' : '#d97706',
-                            border: `1px solid ${c.citizen_confirmation_status === 'confirmed' ? '#bbf7d0' : c.citizen_confirmation_status === 'reopened' ? '#f8d3bf' : '#f3e3a3'}`
-                          }}>
-                            {c.citizen_confirmation_status === 'confirmed' ? <CheckCircle size={12} /> : c.citizen_confirmation_status === 'reopened' ? <AlertTriangle size={12} /> : <Clock size={12} />}
-                            {c.citizen_confirmation_status === 'confirmed' ? 'Citizen Confirmed' : c.citizen_confirmation_status === 'reopened' ? 'Citizen Reopened' : 'Confirmation Pending'}
-                          </div>
-                        )}
-
-                        {/* Status Badge Pill */}
-                        <div style={{
-                          display: 'inline-flex', alignItems: 'center', gap: '6px',
-                          padding: '4px 12px', borderRadius: '100px',
-                          background: sc.bg, border: `1px solid ${sc.border}`
-                        }}>
-                          <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: sc.color }} />
-                          <span style={{ fontSize: '12px', fontWeight: '700', color: sc.color }}>
-                            {sc.label}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Complaint Description */}
-                    <p style={{ color: '#4d4d48', fontSize: '14px', lineHeight: 1.5, margin: '12px 0' }}>
-                      {c.description}
-                    </p>
-
-                    {/* Citizen Reopening Attention Banner (for staff) */}
-                    {c.citizen_confirmation_status === 'reopened' && user.role !== 'citizen' && (
-                      <div style={{
-                        background: '#fff4ed',
-                        border: '1px solid #f8d3bf',
-                        borderRadius: '10px',
-                        padding: '12px 14px',
-                        margin: '12px 0',
-                        display: 'flex',
-                        gap: '10px',
-                        alignItems: 'flex-start'
-                      }}>
-                        <AlertTriangle size={18} color="#dc2626" style={{ flexShrink: 0, marginTop: '2px' }} />
-                        <div style={{ fontSize: '13px' }}>
-                          <span style={{ fontWeight: '700', color: '#991b1b' }}>Citizen Reopened This Task: </span>
-                          <span style={{ color: '#7f1d1d' }}>{c.citizen_feedback || 'Citizen indicated the resolution was incomplete.'}</span>
-                          {c.citizen_feedback_at && (
-                            <span style={{ color: '#991b1b', fontSize: '11px', display: 'block', marginTop: '3px' }}>
-                              Reopened on {formatDate(c.citizen_feedback_at)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Photographs: Before & After Evidence Display */}
-                    {(c.image_url || c.resolution_image_url) && (
-                      <div style={{
-                        display: 'flex',
-                        gap: '16px',
-                        margin: '16px 0',
-                        flexWrap: 'wrap'
-                      }}>
-                        {c.image_url && (
-                          <div style={{ flex: '1 1 180px', maxWidth: '240px' }}>
-                            <div style={{ fontSize: '12px', fontWeight: '700', color: '#66665f', marginBottom: '6px' }}>
-                              Original Evidence (Before)
-                            </div>
-                            <a href={getImageUrl(c.image_url)} target="_blank" rel="noopener noreferrer">
-                              <img
-                                src={getImageUrl(c.image_url)}
-                                alt="Original complaint evidence"
-                                style={{
-                                  width: '100%', height: '110px', objectFit: 'cover',
-                                  borderRadius: '8px', border: '1px solid #e3e2dc'
-                                }}
-                              />
-                            </a>
-                          </div>
-                        )}
-
-                        {c.resolution_image_url && (
-                          <div style={{ flex: '1 1 180px', maxWidth: '240px' }}>
-                            <div style={{ fontSize: '12px', fontWeight: '700', color: '#15803d', marginBottom: '6px' }}>
-                              Resolution Proof (After)
-                            </div>
-                            <a href={getImageUrl(c.resolution_image_url)} target="_blank" rel="noopener noreferrer">
-                              <img
-                                src={getImageUrl(c.resolution_image_url)}
-                                alt="Resolution evidence proof"
-                                style={{
-                                  width: '100%', height: '110px', objectFit: 'cover',
-                                  borderRadius: '8px', border: '2px solid #bbf7d0'
-                                }}
-                              />
-                            </a>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Resolution Notes Display */}
-                    {c.resolution_notes && (
-                      <div style={{
-                        background: '#f8f8f6',
-                        border: '1px solid #e3e2dc',
-                        borderRadius: '8px',
-                        padding: '10px 14px',
-                        margin: '12px 0',
-                        fontSize: '13px',
-                        color: '#3a3a36'
-                      }}>
-                        <span style={{ fontWeight: '700', color: '#1c1c1a' }}>Staff Resolution Notes: </span>
-                        {c.resolution_notes}
-                      </div>
-                    )}
-
-                    {/* Citizen Verification Block (only for resolved complaints with resolution proof and pending confirmation) */}
-                    {user.role === 'citizen' && c.status === 'resolved' && (
-                      c.citizen_confirmation_status === 'confirmed' ? (
-                        <div style={{
-                          marginTop: '16px',
-                          padding: '14px 16px',
-                          borderRadius: '10px',
-                          background: '#f0fdf4',
-                          border: '1px solid #bbf7d0'
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#15803d', fontSize: '13px', fontWeight: '600' }}>
-                            <CheckCircle size={16} />
-                            You confirmed this issue was resolved successfully. Thank you for helping improve our community!
-                          </div>
-                        </div>
-                      ) : c.citizen_confirmation_status === 'reopened' ? (
-                        <div style={{
-                          marginTop: '16px',
-                          padding: '14px 16px',
-                          borderRadius: '10px',
-                          background: '#fff4ed',
-                          border: '1px solid #f8d3bf'
-                        }}>
-                          <div style={{ fontSize: '13px', color: '#991b1b' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '700' }}>
-                              <AlertCircle size={16} color="#dc2626" />
-                              You requested this complaint be reopened for further work.
-                            </div>
-                            {c.citizen_feedback && (
-                              <p style={{ margin: '6px 0 0', color: '#7f1d1d', fontSize: '12px' }}>
-                                Reason: "{c.citizen_feedback}"
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      ) : (c.resolution_image_url && c.citizen_confirmation_status === 'pending') ? (
-                        <div style={{
-                          marginTop: '16px',
-                          padding: '14px 16px',
-                          borderRadius: '10px',
-                          background: '#eff6ff',
-                          border: '1px solid #bfdbfe'
-                        }}>
-                          <div>
-                            <div style={{ fontSize: '13px', fontWeight: '700', color: '#1e40af', marginBottom: '8px' }}>
-                              Please verify this resolution: Did the civic authority fix this issue to your satisfaction?
-                            </div>
-
-                            {reopeningId === c.id ? (
-                              <div style={{ marginTop: '10px' }}>
-                                <textarea
-                                  value={reopeningFeedback}
-                                  onChange={(e) => setReopeningFeedback(e.target.value)}
-                                  placeholder="Please explain what remains incomplete (e.g. pothole patch has caved in, debris left on street)..."
-                                  rows={3}
-                                  style={{
-                                    width: '100%',
-                                    padding: '10px',
-                                    borderRadius: '8px',
-                                    border: '1px solid #d4d3cc',
-                                    fontSize: '13px',
-                                    marginBottom: '10px',
-                                    fontFamily: 'inherit',
-                                    boxSizing: 'border-box'
-                                  }}
-                                />
-                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                  <button
-                                    onClick={() => handleVerify(c.id, 'reopen', reopeningFeedback)}
-                                    disabled={submittingVerification || !reopeningFeedback.trim()}
-                                    style={{
-                                      padding: '8px 16px',
-                                      background: '#dc2626',
-                                      color: 'white',
-                                      border: 'none',
-                                      borderRadius: '6px',
-                                      fontSize: '13px',
-                                      fontWeight: '600',
-                                      cursor: submittingVerification || !reopeningFeedback.trim() ? 'not-allowed' : 'pointer'
-                                    }}
-                                  >
-                                    {submittingVerification ? 'Submitting...' : 'Submit Reopening Request'}
-                                  </button>
-                                  <button
-                                    onClick={() => { setReopeningId(null); setReopeningFeedback(''); }}
-                                    style={{
-                                      padding: '8px 16px',
-                                      background: 'transparent',
-                                      color: '#66665f',
-                                      border: '1px solid #d4d3cc',
-                                      borderRadius: '6px',
-                                      fontSize: '13px',
-                                      cursor: 'pointer'
-                                    }}
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                                <button
-                                  onClick={() => handleVerify(c.id, 'confirm')}
-                                  disabled={submittingVerification}
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    padding: '8px 16px',
-                                    background: '#15803d',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    fontSize: '13px',
-                                    fontWeight: '600',
-                                    cursor: 'pointer'
-                                  }}
-                                >
-                                  <CheckCircle size={15} /> Confirm Fixed
-                                </button>
-                                <button
-                                  onClick={() => setReopeningId(c.id)}
-                                  disabled={submittingVerification}
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    padding: '8px 16px',
-                                    background: 'white',
-                                    color: '#dc2626',
-                                    border: '1px solid #f8d3bf',
-                                    borderRadius: '6px',
-                                    fontSize: '13px',
-                                    fontWeight: '600',
-                                    cursor: 'pointer'
-                                  }}
-                                >
-                                  <RefreshCw size={14} /> Request Reopening
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ) : null
-                    )}
-
-                    {/* Visual Progress Tracker (Read-Only) */}
-                    <div style={{
-                      marginTop: '16px',
-                      padding: '16px',
-                      background: '#f8f8f6',
-                      borderRadius: '8px',
-                      border: '1px solid #e3e2dc'
-                    }}>
-                      <div style={{
-                        fontSize: '11px',
-                        fontWeight: '700',
-                        color: '#66665f',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px',
-                        marginBottom: '14px'
-                      }}>
-                        Resolution Progress
-                      </div>
-
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        justifyContent: 'space-between',
-                        position: 'relative'
-                      }}>
-                        {/* Step 1: Reported */}
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, textAlign: 'center', zIndex: 1 }}>
-                          <div style={{
-                            width: '28px', height: '28px', borderRadius: '50%',
-                            background: '#15803d', color: 'white',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            marginBottom: '6px'
-                          }}>
-                            <Check size={16} strokeWidth={3} />
-                          </div>
-                          <span style={{ fontSize: '13px', fontWeight: '600', color: '#1c1c1a' }}>Reported</span>
-                          <span style={{ fontSize: '11px', color: '#66665f', marginTop: '2px' }}>
-                            {formatDate(c.created_at) || 'Submitted'}
-                          </span>
-                        </div>
-
-                        {/* Progress Bar 1 */}
-                        <div style={{
-                          flex: 1, height: '3px',
-                          background: c.status === 'in_progress' || c.status === 'resolved' ? '#15803d' : '#d4d3cc',
-                          marginTop: '13px', marginInline: '-6px', zIndex: 0
-                        }} />
-
-                        {/* Step 2: In Progress */}
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, textAlign: 'center', zIndex: 1 }}>
-                          <div style={{
-                            width: '28px', height: '28px', borderRadius: '50%',
-                            background: c.status === 'resolved'
-                              ? '#15803d'
-                              : c.status === 'in_progress'
-                                ? '#a16207'
-                                : '#e3e2dc',
-                            color: c.status === 'resolved' || c.status === 'in_progress' ? 'white' : '#8f8e86',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            marginBottom: '6px'
-                          }}>
-                            {c.status === 'resolved' ? <Check size={16} strokeWidth={3} /> : <Wrench size={14} />}
-                          </div>
-                          <span style={{
-                            fontSize: '13px',
-                            fontWeight: '600',
-                            color: c.status === 'in_progress' ? '#b45309' : c.status === 'resolved' ? '#1c1c1a' : '#66665f'
-                          }}>
-                            In Progress
-                          </span>
-                          <span style={{ fontSize: '11px', color: '#66665f', marginTop: '2px' }}>
-                            {c.worker_name ? `Worker: ${c.worker_name}` : (c.status === 'open' ? 'Awaiting assignment' : 'Under work')}
-                          </span>
-                        </div>
-
-                        {/* Progress Bar 2 */}
-                        <div style={{
-                          flex: 1, height: '3px',
-                          background: c.status === 'resolved' ? '#15803d' : '#d4d3cc',
-                          marginTop: '13px', marginInline: '-6px', zIndex: 0
-                        }} />
-
-                        {/* Step 3: Resolved */}
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, textAlign: 'center', zIndex: 1 }}>
-                          <div style={{
-                            width: '28px', height: '28px', borderRadius: '50%',
-                            background: c.status === 'resolved' ? '#15803d' : '#e3e2dc',
-                            color: c.status === 'resolved' ? 'white' : '#8f8e86',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            marginBottom: '6px'
-                          }}>
-                            {c.status === 'resolved' ? <Check size={16} strokeWidth={3} /> : <CheckCircle size={14} />}
-                          </div>
-                          <span style={{
-                            fontSize: '13px',
-                            fontWeight: '600',
-                            color: c.status === 'resolved' ? '#15803d' : '#66665f'
-                          }}>
-                            {c.status === 'resolved' && c.citizen_confirmation_status === 'confirmed' ? 'Verified Fixed' : 'Resolved'}
-                          </span>
-                          <span style={{ fontSize: '11px', color: '#66665f', marginTop: '2px' }}>
-                            {c.status === 'resolved'
-                              ? (c.resolved_at ? formatDate(c.resolved_at) : 'Completed')
-                              : 'Pending completion'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Action & Assignment Management Row */}
-                    <div style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      paddingTop: '16px', borderTop: '1px solid #f1f1ee', marginTop: '16px',
-                      flexWrap: 'wrap', gap: '10px'
-                    }}>
-                      {/* Left: Assignment Information */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {c.worker_name ? (
-                          <div style={{
-                            display: 'flex', alignItems: 'center', gap: '6px',
-                            fontSize: '13px', color: '#3a3a36', background: '#f8f8f6',
-                            padding: '4px 10px', borderRadius: '6px', border: '1px solid #e3e2dc'
-                          }}>
-                            <HardHat size={14} color="#66665f" />
-                            Assigned to <span style={{ fontWeight: '600' }}>{c.worker_name}</span>
-                          </div>
-                        ) : (
-                          c.status !== 'resolved' ? (
-                            <div style={{
-                              display: 'flex', alignItems: 'center', gap: '6px',
-                              fontSize: '13px', color: user.role === 'officer' ? '#c2410c' : '#66665f'
-                            }}>
-                              <AlertTriangle size={14} color={user.role === 'officer' ? '#c2410c' : '#66665f'} />
-                              {user.role === 'officer' ? 'Unassigned' : 'Awaiting worker assignment'}
-                            </div>
-                          ) : null
-                        )}
-                      </div>
-
-                      {/* Right: Actions (Strictly role-restricted) */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        {/* Officer Assignment Dropdown */}
-                        {user.role === 'officer' && c.status !== 'resolved' && (
-                          assigningId === c.id ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <select
-                                value={selectedWorker[c.id] || ''}
-                                onChange={e => setSelectedWorker({ ...selectedWorker, [c.id]: e.target.value })}
-                                style={{
-                                  padding: '6px 12px', borderRadius: '6px', border: '1px solid #d4d3cc',
-                                  fontSize: '13px', outline: 'none', background: 'white', margin: 0, width: '160px'
-                                }}
-                              >
-                                <option value="">Select worker...</option>
-                                {workers.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-                              </select>
-                              <button onClick={() => assignWorker(c.id)} style={{
-                                padding: '7px 12px', background: '#1c1c1a', color: 'white',
-                                border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600'
-                              }}>Save</button>
-                              <button onClick={() => setAssigningId(null)} style={{
-                                padding: '7px', background: 'transparent', color: '#66665f',
-                                border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center'
-                              }}><XCircle size={18} /></button>
-                            </div>
-                          ) : (
-                            <button onClick={() => setAssigningId(c.id)} style={{
-                              display: 'flex', alignItems: 'center', gap: '6px',
-                              padding: '6px 12px', background: 'transparent',
-                              color: '#1c1c1a', border: '1px solid #d4d3cc',
-                              borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600'
-                            }}>
-                              {c.assigned_to ? <RefreshCw size={14} /> : <UserPlus size={14} />}
-                              {c.assigned_to ? 'Reassign' : 'Assign'}
-                            </button>
-                          )
-                        )}
-
-                        {/* Officer: Start Task */}
-                        {user.role === 'officer' && c.status === 'open' && (
-                          <button onClick={() => updateStatus(c.id, 'in_progress')} style={{
-                            display: 'flex', alignItems: 'center', gap: '6px',
-                            padding: '6px 12px', background: '#1c1c1a', color: 'white', border: 'none',
-                            borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600'
-                          }}>
-                            <Play size={14} /> Start Task
-                          </button>
-                        )}
-
-                        {/* Officer or Assigned Worker: Mark Resolved with Proof (Opens Resolution Modal) */}
-                        {(user.role === 'officer' || user.role === 'worker') && c.status === 'in_progress' && (
-                          <button
-                            onClick={() => {
-                              setResolvingComplaint(c);
-                              setResolutionFile(null);
-                              setResolutionFilePreview(null);
-                              setResolutionNotes('');
-                              setResolutionError(null);
-                            }}
-                            style={{
-                              display: 'flex', alignItems: 'center', gap: '6px',
-                              padding: '7px 14px', background: '#15803d', color: 'white', border: 'none',
-                              borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600'
-                            }}
-                          >
-                            <CheckCircle size={14} /> Submit Resolution Proof
-                          </button>
-                        )}
-
-                        {/* Worker: Open Task Notice */}
-                        {user.role === 'worker' && c.status === 'open' && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#66665f', fontSize: '13px' }}>
-                            <Clock size={14} /> Pending Assignment
-                          </div>
-                        )}
-
-                        {/* Citizen: Read-Only Status Indicator */}
-                        {user.role === 'citizen' && (
-                          c.status === 'resolved' ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#15803d', fontSize: '13px', fontWeight: '600' }}>
-                              <CheckCircle size={15} /> Issue Resolved
-                            </div>
-                          ) : c.status === 'in_progress' ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#d97706', fontSize: '13px', fontWeight: '600' }}>
-                              <Wrench size={15} /> In Progress
-                            </div>
-                          ) : (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#66665f', fontSize: '13px', fontWeight: '500' }}>
-                              <Clock size={15} /> Awaiting Review
-                            </div>
-                          )
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Empty States */}
-            {filtered.length === 0 && (
-              user.role === 'citizen' ? (
-                filter === 'all' ? (
-                  <div style={{
-                    textAlign: 'center', padding: '64px 20px',
-                    background: 'white', border: '1px dashed #d4d3cc', borderRadius: '8px'
-                  }}>
-                    <div style={{
-                      width: '64px', height: '64px', borderRadius: '50%',
-                      background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      margin: '0 auto 16px'
-                    }}>
-                      <Inbox size={32} color="#2f5fc4" />
-                    </div>
-                    <h3 style={{ fontSize: '18px', color: '#1c1c1a', fontWeight: '700', marginBottom: '8px' }}>
-                      You haven't reported any issues yet
-                    </h3>
-                    <p style={{ fontSize: '14px', color: '#66665f', maxWidth: '400px', margin: '0 auto 20px', lineHeight: 1.5 }}>
-                      Notice a pothole, broken streetlight, or garbage dump in your area? Submit a complaint to alert your local civic authorities.
-                    </p>
-                    <Link to="/report" style={{ textDecoration: 'none' }}>
-                      <button style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '8px',
-                        padding: '10px 22px', background: '#c2410c', color: 'white',
-                        border: 'none', borderRadius: '100px', fontSize: '14px', fontWeight: '600',
-                        cursor: 'pointer', boxShadow: '0 2px 6px rgba(239,68,68,0.25)'
-                      }}>
-                        <Plus size={16} /> Report an Issue
-                      </button>
-                    </Link>
-                  </div>
-                ) : (
-                  <div style={{
-                    textAlign: 'center', padding: '64px 20px',
-                    background: 'white', border: '1px dashed #d4d3cc', borderRadius: '8px'
-                  }}>
-                    <div style={{
-                      width: '64px', height: '64px', borderRadius: '50%',
-                      background: '#f8f8f6', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      margin: '0 auto 16px'
-                    }}>
-                      <Inbox size={32} color="#8f8e86" />
-                    </div>
-                    <h3 style={{ fontSize: '18px', color: '#1c1c1a', fontWeight: '700', marginBottom: '8px' }}>
-                      No {statusConfig[filter]?.label || filter} complaints
-                    </h3>
-                    <p style={{ fontSize: '14px', color: '#66665f', maxWidth: '380px', margin: '0 auto 16px' }}>
-                      You don't have any reports currently matching this status filter.
-                    </p>
-                    <button
-                      onClick={() => setFilter('all')}
-                      style={{
-                        padding: '8px 18px', background: '#1c1c1a', color: 'white',
-                        border: 'none', borderRadius: '100px', fontSize: '13px', fontWeight: '600', cursor: 'pointer'
-                      }}
-                    >
-                      View All Complaints
-                    </button>
-                  </div>
-                )
-              ) : (
-                <div style={{
-                  textAlign: 'center', padding: '80px 20px',
-                  background: 'white', border: '1px dashed #d4d3cc', borderRadius: '8px'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
-                    {user.role === 'worker'
-                      ? <PartyPopper size={48} color="#8f8e86" strokeWidth={1.5} />
-                      : <Inbox size={48} color="#8f8e86" strokeWidth={1.5} />
-                    }
-                  </div>
-                  <h3 style={{ fontSize: '18px', color: '#1c1c1a', fontWeight: '600', marginBottom: '6px' }}>
-                    {user.role === 'worker' ? "You're all caught up!" : 'Inbox Zero'}
-                  </h3>
-                  <p style={{ fontSize: '14px', color: '#66665f', maxWidth: '300px', margin: '0 auto' }}>
-                    {user.role === 'worker'
-                      ? 'No tasks assigned to you right now. Take a breather.'
-                      : 'There are no complaints matching this filter.'}
-                  </p>
-                </div>
-              )
-            )}
-          </div>
-        )}
-
-        {/* Resolution Evidence Submission Modal (for Officers & Assigned Workers) */}
-        {resolvingComplaint && (
-          <div style={{
-            position: 'fixed',
-            top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(15, 23, 42, 0.65)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 2000,
-            padding: '20px'
-          }}>
-            <div style={{
-              background: 'white',
-              borderRadius: '8px',
-              maxWidth: '520px',
-              width: '100%',
-              padding: '28px',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-              maxHeight: '90vh',
-              overflowY: 'auto'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <div>
-                  <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#1c1c1a', margin: 0 }}>
-                    Submit Resolution Evidence
-                  </h3>
-                  <p style={{ fontSize: '13px', color: '#66665f', margin: '4px 0 0' }}>
-                    Complaint #{resolvingComplaint.id}: {resolvingComplaint.category}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={closeResolutionModal}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8f8e86' }}
-                >
-                  <XCircle size={22} />
-                </button>
-              </div>
-
-              {resolutionError && (
-                <div style={{
-                  background: '#fff4ed',
-                  border: '1px solid #f8d3bf',
-                  borderRadius: '8px',
-                  padding: '10px 14px',
-                  color: '#dc2626',
-                  fontSize: '13px',
-                  marginBottom: '16px'
-                }}>
-                  {resolutionError}
-                </div>
-              )}
-
-              <form onSubmit={submitResolution}>
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#3a3a36', marginBottom: '6px' }}>
-                    Resolution Photograph <span style={{ color: '#c2410c' }}>* (Required)</span>
-                  </label>
-                  <p style={{ fontSize: '12px', color: '#66665f', margin: '0 0 8px' }}>
-                    Upload an after-completion photograph (JPEG, PNG, WebP up to 5 MB).
-                  </p>
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={handleResolutionFileChange}
-                    required
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      fontSize: '13px',
-                      padding: '8px 12px',
-                      border: '1px solid #d4d3cc',
-                      borderRadius: '8px',
-                      boxSizing: 'border-box'
-                    }}
-                  />
-                  {resolutionFilePreview && (
-                    <div style={{ marginTop: '10px' }}>
-                      <img
-                        src={resolutionFilePreview}
-                        alt="Resolution preview"
-                        style={{ height: '120px', width: 'auto', borderRadius: '8px', border: '1px solid #e3e2dc', objectFit: 'cover' }}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ marginBottom: '20px' }}>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#3a3a36', marginBottom: '6px' }}>
-                    Resolution Notes <span style={{ color: '#8f8e86', fontWeight: '400' }}>(Optional)</span>
-                  </label>
-                  <textarea
-                    value={resolutionNotes}
-                    onChange={(e) => setResolutionNotes(e.target.value)}
-                    placeholder="Describe the actions taken to resolve this civic complaint..."
-                    rows={3}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      borderRadius: '8px',
-                      border: '1px solid #d4d3cc',
-                      fontSize: '13px',
-                      boxSizing: 'border-box',
-                      fontFamily: 'inherit'
-                    }}
-                  />
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                  <button
-                    type="button"
-                    onClick={closeResolutionModal}
-                    style={{
-                      padding: '9px 18px',
-                      background: 'transparent',
-                      border: '1px solid #d4d3cc',
-                      borderRadius: '8px',
-                      fontSize: '13px',
-                      fontWeight: '600',
-                      color: '#66665f',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submittingResolution || !resolutionFile}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '9px 20px',
-                      background: '#15803d',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontSize: '13px',
-                      fontWeight: '600',
-                      color: 'white',
-                      cursor: submittingResolution || !resolutionFile ? 'not-allowed' : 'pointer',
-                      opacity: submittingResolution || !resolutionFile ? 0.7 : 1
-                    }}
-                  >
-                    {submittingResolution ? (
-                      <>
-                        <RefreshCw size={14} className="spin" /> Submitting...
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle size={15} /> Confirm Resolution
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+      {resolvingComplaint && (
+        <ResolutionSheet complaint={resolvingComplaint} file={resolutionFile} filePreview={resolutionFilePreview}
+          notes={resolutionNotes} setNotes={setResolutionNotes} error={resolutionError} submitting={submittingResolution}
+          onFile={handleResolutionFileChange} onSubmit={submitResolution} onClose={closeResolutionModal} />
+      )}
+    </main>
   );
 }
 

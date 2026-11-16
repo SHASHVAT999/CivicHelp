@@ -15,6 +15,8 @@ function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  const switchMode = (register) => { setIsRegister(register); setError(''); setInfo(''); };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(''); setInfo('');
@@ -34,64 +36,79 @@ function Login() {
       if (isRegister) {
         setIsRegister(false);
         setForm({ name: '', email: payload.email, password: '' });
-        setInfo('Account created. You can log in now.');
+        setInfo('Account created. Log in with your new password.');
       } else {
         localStorage.setItem('token', res.data.token);
         localStorage.setItem('user', JSON.stringify(res.data.user));
-        // Citizens land on the home page; staff go straight to their dashboard
+        // Citizens land on the home page; staff go straight to their desk
         navigate(res.data.user.role === 'citizen' ? '/' : '/dashboard');
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Something went wrong');
+      setError(err.response?.data?.error || 'Something went wrong. Please try again.');
     }
     setLoading(false);
   };
 
   return (
-    <div className="auth-page">
-      <div className="auth-box">
-        <h1 className="page-title">{isRegister ? 'Create an account' : 'Log in'}</h1>
-        <p className="muted page-sub">
-          {isRegister
-            ? 'Citizen accounts can report issues and follow them. Staff accounts are created by the administrator.'
-            : 'Citizens, ward officers and field workers all log in here.'}
-        </p>
+    <main className="auth">
+      <section className="auth-side" aria-hidden="true">
+        <div>
+          <p className="kicker" style={{ color: '#a9a69b' }}>One desk, three roles</p>
+          <h1 style={{ marginTop: 14 }}>Report it.<br />Fix it.<br /><span>Prove it.</span></h1>
+        </div>
+        <ul className="auth-points">
+          <li><b>01</b>Citizens file reports with a photo and a pin, then confirm the fix.</li>
+          <li><b>02</b>Ward officers triage the queue and assign field workers.</li>
+          <li><b>03</b>Field workers close work orders with a photo of the finished job.</li>
+        </ul>
+      </section>
 
-        <div className="card">
-          {info && <div className="success">{info}</div>}
-          {error && <div className="error" role="alert">{error}</div>}
+      <section className="auth-main">
+        <div className="auth-form">
+          <div className="tabs" role="tablist" aria-label="Account">
+            <button type="button" role="tab" className="tab" aria-selected={!isRegister} onClick={() => switchMode(false)}>Log in</button>
+            <button type="button" role="tab" className="tab" aria-selected={isRegister} onClick={() => switchMode(true)}>New citizen</button>
+          </div>
+
+          {info && <div className="notice notice-ok" role="status">{info}</div>}
+          {error && <div className="notice notice-error" role="alert">{error}</div>}
+
           <form onSubmit={handleSubmit}>
             {isRegister && (
-              <>
-                <label htmlFor="name">Full name</label>
-                <input id="name" type="text" required autoComplete="name"
+              <label className="field">
+                <span className="field-label"><b>A</b> Full name</span>
+                <input type="text" required autoComplete="name"
                   value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-              </>
+              </label>
             )}
-            <label htmlFor="email">Email</label>
-            <input id="email" type="email" required autoComplete="email"
-              value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
-            <label htmlFor="password">Password</label>
-            <input id="password" type="password" required
-              placeholder={isRegister ? 'At least 6 characters' : ''}
-              minLength={isRegister ? 6 : undefined}
-              autoComplete={isRegister ? 'new-password' : 'current-password'}
-              value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
-            <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
-              {loading ? 'Please wait...' : isRegister ? 'Create account' : 'Log in'}
+            <label className="field">
+              <span className="field-label"><b>{isRegister ? 'B' : 'A'}</b> Email</span>
+              <input type="email" required autoComplete="email"
+                value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
+            </label>
+            <label className="field">
+              <span className="field-label">
+                <b>{isRegister ? 'C' : 'B'}</b> Password
+                {isRegister && <span className="field-hint">at least 6 characters</span>}
+              </span>
+              <input type="password" required
+                minLength={isRegister ? 6 : undefined}
+                autoComplete={isRegister ? 'new-password' : 'current-password'}
+                value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
+            </label>
+            <button type="submit" className="btn btn-ink btn-lg btn-block" disabled={loading}>
+              {loading ? 'Please wait...' : isRegister ? 'Create citizen account' : 'Log in'}
             </button>
           </form>
 
-          <p className="auth-switch muted">
-            {isRegister ? 'Already have an account?' : 'New to CivicHelp?'}
-            <button type="button" className="link-button"
-              onClick={() => { setIsRegister(!isRegister); setError(''); setInfo(''); }}>
-              {isRegister ? 'Log in' : 'Create a citizen account'}
-            </button>
+          <p className="auth-foot">
+            {isRegister
+              ? 'Registration always creates a citizen account. Ward officers and field workers receive their logins from the administrator.'
+              : 'Staff accounts are issued by the administrator. Citizens can create their own account.'}
           </p>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }
 

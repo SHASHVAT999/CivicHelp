@@ -1,47 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import L from 'leaflet';
+import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
 import axios from 'axios';
-import { Camera, MapPin, ClipboardCheck, CircleCheck } from 'lucide-react';
 import { API_URL } from '../config';
-import { CategoryIcon, STATUS } from '../categories';
+import { CATEGORIES, CategoryIcon, STATUS, StatusChip, refNo, timeAgo } from '../categories';
 import 'leaflet/dist/leaflet.css';
 
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: require('leaflet/dist/images/marker-icon-2x.png'),
-  iconUrl: require('leaflet/dist/images/marker-icon.png'),
-  shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
-});
-
-function getIcon(status) {
-  const color = (STATUS[status] || STATUS.open).color;
-  return L.divIcon({
-    className: '',
-    html: `<div style="background:${color};width:12px;height:12px;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.35)"></div>`,
-    iconSize: [12, 12],
-  });
-}
-
-const steps = [
-  { icon: Camera, title: 'Report', desc: 'A citizen takes a photo of the problem and describes it.' },
-  { icon: MapPin, title: 'Locate', desc: 'The location is set from GPS, an address search or a click on the map.' },
-  { icon: ClipboardCheck, title: 'Assign and fix', desc: 'The ward officer assigns a field worker, who uploads a photo of the completed work.' },
-  { icon: CircleCheck, title: 'Confirm', desc: 'The citizen compares the before and after photos and confirms the fix, or reopens it.' },
+const journey = [
+  { role: 'Citizen', title: 'Reported', text: 'A photo, a short description and a pin on the map. The report is public the moment it is filed.' },
+  { role: 'Ward officer', title: 'Assigned', text: 'The ward officer reviews the queue and gives the report to a field worker.' },
+  { role: 'Field worker', title: 'Fixed', text: 'The worker repairs it and files a photo of the finished work. No photo, no closure.' },
+  { role: 'Citizen', title: 'Confirmed', text: 'The person who reported it compares before and after, then confirms the fix or sends it back.' },
 ];
-
-function formatRelative(dateStr) {
-  const t = new Date(dateStr).getTime();
-  if (isNaN(t)) return '';
-  const mins = Math.max(0, Math.round((Date.now() - t) / 60000));
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins} min ago`;
-  const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `${hrs} h ago`;
-  const days = Math.round(hrs / 24);
-  return `${days} day${days === 1 ? '' : 's'} ago`;
-}
 
 function Home() {
   const [complaints, setComplaints] = useState([]);
@@ -63,136 +33,151 @@ function Home() {
 
   const count = (status) => complaints.filter((c) => c.status === status).length;
   const stats = { total: complaints.length, open: count('open'), in_progress: count('in_progress'), resolved: count('resolved') };
-  const resolutionRate = stats.total > 0 ? Math.round((stats.resolved / stats.total) * 100) : 0;
-  const byCategory = Object.entries(
-    complaints.reduce((acc, c) => { acc[c.category] = (acc[c.category] || 0) + 1; return acc; }, {})
-  ).sort((a, b) => b[1] - a[1]);
+  const rate = stats.total ? Math.round((stats.resolved / stats.total) * 100) : 0;
+  const perCategory = CATEGORIES.map((cat) => ({ cat, n: complaints.filter((c) => c.category === cat).length }));
+  const maxCat = Math.max(1, ...perCategory.map((p) => p.n));
 
   return (
-    <div>
-      <section className="home-hero">
-        <div className="home-hero-text">
-          <p className="eyebrow">Civic issue reporting</p>
-          <h1 className="home-hero-title">Report local problems. Follow them until they are fixed.</h1>
-          <p className="lead">
-            Citizens report potholes, broken streetlights and other issues on a shared map.
-            Ward officers assign field workers, workers upload proof of the repair, and the
-            citizen confirms the result. Every change appears on the map immediately.
+    <main>
+      <section className="hero">
+        <div className="hero-copy">
+          <p className="kicker">CivicHelp / public works reporting</p>
+          <h1 className="hero-title">Every broken street deserves a <mark className="hl">paper trail.</mark></h1>
+          <p className="hero-lead">
+            Report a pothole, a dead streetlight or an overflowing drain with one photo and a pin.
+            The ward office assigns it, a field worker fixes it and files proof, and you decide
+            whether it is really done. Every step is public and updates live.
           </p>
-          <div className="button-row">
-            <Link to="/report" className="btn btn-primary">Report an issue</Link>
-            <Link to="/map" className="btn btn-outline">Open the map</Link>
+          <div className="hero-actions">
+            <Link to="/report" className="btn btn-signal btn-lg">Report a problem</Link>
+            <Link to="/map" className="link-arrow">Open the live map &rarr;</Link>
           </div>
-          <p className="muted small">
-            {loadError ? 'Live data is unavailable right now.' : `${stats.total} reports so far, ${stats.resolved} resolved.`}
-          </p>
         </div>
 
-        <div className="home-hero-map">
-          <MapContainer center={[20.5937, 78.9629]} zoom={5} style={{ height: '100%', width: '100%' }} zoomControl={false}>
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution='&copy; <a href="https://osm.org/copyright">OpenStreetMap</a> contributors' />
-            {complaints.map((c) => (
-              <Marker key={c.id} position={[c.latitude, c.longitude]} icon={getIcon(c.status)}>
-                <Popup>
-                  <strong>{c.category}</strong>
-                  {c.address && <div className="muted small">{c.address}</div>}
-                </Popup>
-              </Marker>
-            ))}
-          </MapContainer>
-        </div>
+        <figure className="hero-figure">
+          <div className="hero-map">
+            <MapContainer center={[22.5, 79]} zoom={5} zoomControl={false} scrollWheelZoom={false}
+              style={{ height: '100%', width: '100%' }}>
+              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution='&copy; <a href="https://osm.org/copyright">OpenStreetMap</a> contributors' />
+              {complaints.filter((c) => Number.isFinite(Number(c.latitude)) && Number.isFinite(Number(c.longitude))).map((c) => (
+                <CircleMarker key={c.id} center={[Number(c.latitude), Number(c.longitude)]} radius={7}
+                  pathOptions={{ color: '#141413', weight: 2, fillColor: (STATUS[c.status] || STATUS.open).color, fillOpacity: 1 }}>
+                  <Popup>
+                    <div className="pop-ref">{refNo(c.id)}</div>
+                    <div className="pop-title">{c.category}</div>
+                    {c.address && <div className="small muted">{c.address}</div>}
+                  </Popup>
+                </CircleMarker>
+              ))}
+            </MapContainer>
+          </div>
+          <figcaption className="fig-caption">
+            <span>Fig. 1 &mdash; every report, live</span>
+            <span className="legend">
+              <StatusChip status="open" /><StatusChip status="in_progress" /><StatusChip status="resolved" />
+            </span>
+          </figcaption>
+        </figure>
       </section>
 
-      <section id="impact" className="home-section">
-        <div className="section-head">
-          <h2>Current status</h2>
-          <p className="muted">Live figures from the CivicHelp database.</p>
+      <section className="board" id="impact" aria-labelledby="board-title">
+        <div className="board-head">
+          <div>
+            <p className="kicker">The board &middot; straight from the database</p>
+            <h2 id="board-title">Where things stand today</h2>
+          </div>
+          {loadError && <p className="kicker">Live data is unavailable right now</p>}
         </div>
 
-        <div className="stat-row">
+        <div className="board-figures">
           {[
-            { label: 'Total reports', value: stats.total },
+            { label: 'Reports filed', value: stats.total },
             { label: 'Open', value: stats.open, color: STATUS.open.color },
             { label: 'In progress', value: stats.in_progress, color: STATUS.in_progress.color },
-            { label: 'Resolved', value: stats.resolved, color: STATUS.resolved.color },
-          ].map((s) => (
-            <div key={s.label} className="stat">
-              <div className="stat-label">
-                {s.color && <span className="badge-dot" style={{ background: s.color }} />}
-                {s.label}
-              </div>
-              <div className="stat-value">{s.value}</div>
+            { label: 'Fixed', value: stats.resolved, color: STATUS.resolved.color },
+            { label: 'Fix rate', value: `${rate}%` },
+          ].map((f) => (
+            <div className="figure-cell" key={f.label}>
+              <div className="figure-num">{f.value}</div>
+              <div className="figure-label">{f.color && <i style={{ background: f.color }} />}{f.label}</div>
             </div>
           ))}
         </div>
 
-        <div className="home-grid-3">
-          <div className="panel">
-            <h3 className="panel-title">Resolution rate</h3>
-            <div className="stat-value">{resolutionRate}%</div>
-            <p className="muted small">{stats.resolved} of {stats.total} reports resolved</p>
-            <div className="meter"><div style={{ width: `${resolutionRate}%` }} /></div>
-          </div>
-
-          <div className="panel">
-            <h3 className="panel-title">Reports by category</h3>
-            {byCategory.length === 0 && <p className="muted small">No reports yet.</p>}
-            {byCategory.map(([cat, n]) => (
-              <div key={cat} className="bar-row">
-                <div className="bar-label">
-                  <span><CategoryIcon category={cat} size={14} /> {cat}</span>
-                  <span className="tabular">{n}</span>
-                </div>
-                <div className="meter"><div style={{ width: `${(n / stats.total) * 100}%` }} /></div>
-              </div>
-            ))}
-          </div>
-
-          <div className="panel">
-            <h3 className="panel-title">Latest reports</h3>
-            {complaints.length === 0 && <p className="muted small">No reports yet.</p>}
-            <ul className="plain-list">
-              {complaints.slice(0, 5).map((c) => (
-                <li key={c.id}>
-                  <div className="list-title"><CategoryIcon category={c.category} size={14} /> {c.category}</div>
-                  <div className="muted small clamp-1">{c.address || 'Location on map'} · {formatRelative(c.created_at)}</div>
-                </li>
+        <p className="kicker" style={{ marginBottom: 10 }}>Latest reports</p>
+        {complaints.length === 0 ? (
+          <p className="departures-empty">No reports yet. The first one will appear here the moment it is filed.</p>
+        ) : (
+          <table className="departures">
+            <thead>
+              <tr><th>Ref</th><th className="dep-time">Filed</th><th>Category</th><th>Location</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              {complaints.slice(0, 6).map((c) => (
+                <tr key={c.id}>
+                  <td className="dep-ref">{refNo(c.id)}</td>
+                  <td className="dep-time">{timeAgo(c.created_at)}</td>
+                  <td className="dep-cat">{c.category}</td>
+                  <td className="dep-loc clamp-1">{c.address || 'Pinned on the map'}</td>
+                  <td><StatusChip status={c.status} /></td>
+                </tr>
               ))}
-            </ul>
-          </div>
-        </div>
+            </tbody>
+          </table>
+        )}
       </section>
 
-      <section id="how" className="home-section home-section-alt">
+      <section className="section" id="how" aria-labelledby="how-title">
         <div className="section-head">
-          <h2>How it works</h2>
-          <p className="muted">Three roles, one shared record of every issue.</p>
+          <h2 id="how-title">How a report travels</h2>
+          <p>
+            Every report rides the same line, from the street to the ward office and back to the
+            person who filed it. Each stop is recorded, and nothing is closed without a photograph.
+          </p>
         </div>
-        <ol className="steps">
-          {steps.map(({ icon: Icon, title, desc }, i) => (
-            <li key={title} className="step">
-              <div className="step-head">
-                <span className="step-num">{i + 1}</span>
-                <Icon size={18} strokeWidth={1.75} aria-hidden="true" />
-              </div>
-              <h3>{title}</h3>
-              <p className="muted">{desc}</p>
+        <ol className="journey">
+          {journey.map((j) => (
+            <li key={j.title}>
+              <span className="journey-role">{j.role}</span>
+              <h3>{j.title}</h3>
+              <p>{j.text}</p>
             </li>
           ))}
         </ol>
       </section>
 
-      <footer className="home-footer">
-        <span className="brand-mark small-mark">C</span>
-        <span className="muted small">CivicHelp - a student project in civic technology and DevOps.</span>
-        <nav className="footer-links">
-          <Link to="/map">Map</Link>
-          <Link to="/report">Report an issue</Link>
-          <Link to="/login">Log in</Link>
-        </nav>
+      <section className="section" aria-labelledby="cat-title">
+        <div className="section-head">
+          <h2 id="cat-title">What you can report</h2>
+          <p>Five categories cover most of what goes wrong on a street. Counts are live.</p>
+        </div>
+        <div className="cat-table">
+          {perCategory.map(({ cat, n }) => (
+            <div className="cat-row" key={cat}>
+              <span className="cat-icon"><CategoryIcon category={cat} size={22} /></span>
+              <div>
+                <h3>{cat}</h3>
+                <div className="cat-bar"><i style={{ width: `${(n / maxCat) * 100}%` }} /></div>
+              </div>
+              <span className="cat-count">{n}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <footer className="footer">
+        <div className="footer-word">Civic<span>Help</span></div>
+        <div className="footer-bar">
+          <span>A student project in civic technology and DevOps</span>
+          <nav aria-label="Footer">
+            <Link to="/map">Live map</Link>
+            <Link to="/report">Report a problem</Link>
+            <Link to="/login">Log in</Link>
+          </nav>
+        </div>
       </footer>
-    </div>
+    </main>
   );
 }
 
