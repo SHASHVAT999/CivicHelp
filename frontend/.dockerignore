@@ -1,0 +1,17 @@
+# Git and dependencies
+.git
+node_modules/
+
+# Generated frontend artifacts
+build/
+coverage/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Logs and operating system files
+*.log
+.DS_Store
+Thumbs.db

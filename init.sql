@@ -22,6 +22,11 @@ CREATE TABLE IF NOT EXISTS complaints (
   status ENUM('open','in_progress','resolved') DEFAULT 'open',
   assigned_to INT NULL,
   resolved_at TIMESTAMP NULL,
+  resolution_image_url VARCHAR(255) NULL,
+  resolution_notes TEXT NULL,
+  citizen_confirmation_status ENUM('not_required','pending','confirmed','reopened') DEFAULT 'not_required',
+  citizen_feedback TEXT NULL,
+  citizen_feedback_at TIMESTAMP NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (citizen_id) REFERENCES users(id),
   FOREIGN KEY (assigned_to) REFERENCES users(id)

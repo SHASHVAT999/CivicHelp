@@ -91,9 +91,7 @@ router.get('/officer', auth, async (req, res) => {
   }
   try {
     const [complaints] = await db.query(`
-      SELECT c.id, c.citizen_id, c.category, c.description,
-        c.latitude, c.longitude, c.address, c.image_url,
-        c.status, c.assigned_to, c.resolved_at, c.created_at,
+      SELECT c.*,
         u.name as citizen_name,
         w.name as worker_name
       FROM complaints c
@@ -258,7 +256,7 @@ router.patch('/:id/assign', auth, async (req, res) => {
   }
 });
 
-// Update complaint status
+// Update complaint status (start task, etc. - resolving requires resolution proof)
 router.patch('/:id/status', auth, async (req, res) => {
   const { status } = req.body;
   const { role, id: userId } = req.user || {};
@@ -266,6 +264,13 @@ router.patch('/:id/status', auth, async (req, res) => {
   const validStatuses = ['open', 'in_progress', 'resolved'];
   if (!validStatuses.includes(status)) {
     return res.status(400).json({ error: 'Invalid status. Must be open, in_progress, or resolved.' });
+  }
+
+  // Disallow resolving without proof
+  if (status === 'resolved') {
+    return res.status(400).json({
+      error: 'Marking a complaint as resolved requires submitting resolution proof via POST /api/complaints/:id/resolve'
+    });
   }
 
   // Strict allowlist: only officer and worker roles may proceed
@@ -285,16 +290,13 @@ router.patch('/:id/status', auth, async (req, res) => {
   }
 
   try {
-    const resolvedAt = status === 'resolved' ? new Date() : null;
     await db.query(
-      'UPDATE complaints SET status = ?, resolved_at = ? WHERE id = ?',
-      [status, resolvedAt, req.params.id]
+      'UPDATE complaints SET status = ? WHERE id = ?',
+      [status, req.params.id]
     );
 
     const [updated] = await db.query(
-      `SELECT c.id, c.citizen_id, c.category, c.description,
-        c.latitude, c.longitude, c.address, c.image_url,
-        c.status, c.assigned_to, c.resolved_at, c.created_at,
+      `SELECT c.*,
         u.name as citizen_name, u.email as citizen_email,
         w.name as worker_name
        FROM complaints c
@@ -304,13 +306,104 @@ router.patch('/:id/status', auth, async (req, res) => {
       [req.params.id]
     );
 
-    // Check if complaint exists before accessing properties
     if (updated.length === 0) {
       return res.status(404).json({ error: 'Complaint not found' });
     }
 
+    // Public broadcast: only map fields (no personal or staff data)
+    const publicUpdate = {
+      id: updated[0].id,
+      category: updated[0].category,
+      description: updated[0].description,
+      latitude: updated[0].latitude,
+      longitude: updated[0].longitude,
+      address: updated[0].address,
+      image_url: updated[0].image_url,
+      status: updated[0].status,
+      resolved_at: updated[0].resolved_at,
+      created_at: updated[0].created_at,
+    };
+    req.app.get('io').emit('statusUpdated', publicUpdate);
+
+    // HTTP response to authorized officer/worker (stripped of citizen email)
+    const { citizen_email: _removed, ...responseData } = updated[0];
+    res.json(responseData);
+  } catch (err) {
+    console.error('[Complaints Error] Status update failure:', err);
+    res.status(500).json({ error: 'Failed to update complaint status' });
+  }
+});
+
+// Resolve complaint with resolution proof (officer or assigned worker only)
+const handleResolveComplaint = async (req, res) => {
+  const { role, id: userId } = req.user || {};
+
+  // Strict allowlist: only officer and worker roles may resolve
+  if (role !== 'officer' && role !== 'worker') {
+    cleanupUploadedFile(req.file);
+    return res.status(403).json({ error: 'Unauthorized: only ward officers and assigned field workers can resolve complaints' });
+  }
+
+  // Field workers can only resolve complaints assigned to them
+  if (role === 'worker') {
+    const [check] = await db.query(
+      'SELECT id FROM complaints WHERE id = ? AND assigned_to = ?',
+      [req.params.id, userId]
+    );
+    if (check.length === 0) {
+      cleanupUploadedFile(req.file);
+      return res.status(403).json({ error: 'Not your assigned complaint' });
+    }
+  }
+
+  // Check if complaint exists
+  const [complaint] = await db.query(
+    'SELECT * FROM complaints WHERE id = ?',
+    [req.params.id]
+  );
+  if (complaint.length === 0) {
+    cleanupUploadedFile(req.file);
+    return res.status(404).json({ error: 'Complaint not found' });
+  }
+
+  // Mandatory: Resolution photograph is required
+  if (!req.file) {
+    return res.status(400).json({ error: 'Resolution photograph is required to resolve a complaint.' });
+  }
+
+  const resolution_image_url = `/uploads/${req.file.filename}`;
+  const resolution_notes = req.body.resolution_notes ? req.body.resolution_notes.trim() : null;
+  const resolvedAt = new Date();
+
+  try {
+    // When staff resolves (or re-resolves a reopened complaint), reset confirmation to 'pending'
+    // and clear any previous citizen feedback for this new resolution cycle
+    await db.query(
+      `UPDATE complaints
+       SET status = 'resolved',
+           resolved_at = ?,
+           resolution_image_url = ?,
+           resolution_notes = ?,
+           citizen_confirmation_status = 'pending',
+           citizen_feedback = NULL,
+           citizen_feedback_at = NULL
+       WHERE id = ?`,
+      [resolvedAt, resolution_image_url, resolution_notes, req.params.id]
+    );
+
+    const [updated] = await db.query(
+      `SELECT c.*,
+        u.name as citizen_name, u.email as citizen_email,
+        w.name as worker_name
+       FROM complaints c
+       LEFT JOIN users u ON c.citizen_id = u.id
+       LEFT JOIN users w ON c.assigned_to = w.id
+       WHERE c.id = ?`,
+      [req.params.id]
+    );
+
     // Send email notification to citizen when resolved (safe & optional)
-    if (status === 'resolved' && updated[0].citizen_email) {
+    if (updated[0].citizen_email) {
       sendResolutionEmail(
         updated[0].citizen_email,
         updated[0].citizen_name,
@@ -338,9 +431,126 @@ router.patch('/:id/status', auth, async (req, res) => {
     const { citizen_email: _removed, ...responseData } = updated[0];
     res.json(responseData);
   } catch (err) {
-    console.error('[Complaints Error] Status update failure:', err);
-    res.status(500).json({ error: 'Failed to update complaint status' });
+    cleanupUploadedFile(req.file);
+    console.error('[Complaints Error] Resolve failure:', err);
+    res.status(500).json({ error: 'Failed to resolve complaint' });
   }
-});
+};
+
+router.post('/:id/resolve', auth, upload.single('resolution_image'), handleResolveComplaint);
+router.patch('/:id/resolve', auth, upload.single('resolution_image'), handleResolveComplaint);
+
+// Citizen verification (confirm fixed or request reopening)
+const handleCitizenVerification = async (req, res) => {
+  const { action, feedback } = req.body;
+  const userId = req.user.id;
+
+  const normalizedAction = (action === 'confirm' || action === 'confirmed')
+    ? 'confirmed'
+    : (action === 'reopen' || action === 'reopened')
+      ? 'reopened'
+      : null;
+
+  if (!normalizedAction) {
+    return res.status(400).json({
+      error: "Invalid action. Must be 'confirm' or 'reopen'."
+    });
+  }
+
+  if (normalizedAction === 'reopened' && (!feedback || !feedback.trim())) {
+    return res.status(400).json({
+      error: 'Please provide an explanation for requesting reopening.'
+    });
+  }
+
+  try {
+    const [complaints] = await db.query(
+      'SELECT * FROM complaints WHERE id = ?',
+      [req.params.id]
+    );
+
+    if (complaints.length === 0) {
+      return res.status(404).json({ error: 'Complaint not found' });
+    }
+
+    const complaint = complaints[0];
+
+    // Only the citizen who reported the complaint may verify it
+    if (complaint.citizen_id !== userId) {
+      return res.status(403).json({
+        error: 'Forbidden: you can only confirm or reopen complaints that you reported.'
+      });
+    }
+
+    // Must be in resolved status to verify
+    if (complaint.status !== 'resolved') {
+      return res.status(400).json({
+        error: 'Only resolved complaints can be confirmed or reopened.'
+      });
+    }
+
+    // Must have resolution proof (legacy resolved complaints do not require citizen verification)
+    if (!complaint.resolution_image_url) {
+      return res.status(400).json({
+        error: 'Cannot verify a complaint that has no resolution proof.'
+      });
+    }
+
+    // Disallow repeated submissions for the same resolution cycle
+    if (complaint.citizen_confirmation_status !== 'pending') {
+      return res.status(400).json({
+        error: `Verification is not pending for this complaint (current status: ${complaint.citizen_confirmation_status}).`
+      });
+    }
+
+    const newStatus = normalizedAction === 'reopened' ? 'in_progress' : 'resolved';
+    const cleanFeedback = feedback ? feedback.trim() : null;
+    const feedbackAt = new Date();
+
+    await db.query(
+      `UPDATE complaints
+       SET status = ?,
+           citizen_confirmation_status = ?,
+           citizen_feedback = ?,
+           citizen_feedback_at = ?
+       WHERE id = ?`,
+      [newStatus, normalizedAction, cleanFeedback, feedbackAt, req.params.id]
+    );
+
+    const [updated] = await db.query(
+      `SELECT c.*,
+        w.name as worker_name
+       FROM complaints c
+       LEFT JOIN users w ON c.assigned_to = w.id
+       WHERE c.id = ?`,
+      [req.params.id]
+    );
+
+    // Broadcast status change to Socket.IO if reopened (status changed back to in_progress)
+    if (newStatus === 'in_progress') {
+      const publicUpdate = {
+        id: updated[0].id,
+        category: updated[0].category,
+        description: updated[0].description,
+        latitude: updated[0].latitude,
+        longitude: updated[0].longitude,
+        address: updated[0].address,
+        image_url: updated[0].image_url,
+        status: updated[0].status,
+        resolved_at: updated[0].resolved_at,
+        created_at: updated[0].created_at,
+      };
+      req.app.get('io').emit('statusUpdated', publicUpdate);
+    }
+
+    res.json(updated[0]);
+  } catch (err) {
+    console.error('[Complaints Error] Citizen verification failure:', err);
+    res.status(500).json({ error: 'Failed to submit verification' });
+  }
+};
+
+router.post('/:id/verify', auth, handleCitizenVerification);
+router.patch('/:id/verify', auth, handleCitizenVerification);
 
 module.exports = router;

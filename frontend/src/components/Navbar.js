@@ -63,12 +63,19 @@ function Navbar() {
             transition: 'all 0.2s',
           }}>{link.label}</Link>
         ))}
-        {token && (user.role === 'officer' || user.role === 'worker') && (
+        {token && (
           <Link to="/dashboard" style={{
-            color: '#94a3b8', textDecoration: 'none',
-            fontSize: '14px', fontWeight: '500',
-            padding: '8px 14px', borderRadius: '100px',
-          }}>Dashboard</Link>
+            color: location.pathname === '/dashboard' ? 'white' : '#94a3b8',
+            textDecoration: 'none',
+            fontSize: '14px',
+            fontWeight: '500',
+            padding: '8px 14px',
+            borderRadius: '100px',
+            background: location.pathname === '/dashboard' ? 'rgba(255,255,255,0.1)' : 'transparent',
+            transition: 'all 0.2s',
+          }}>
+            {user.role === 'citizen' ? 'My Issues' : 'Dashboard'}
+          </Link>
         )}
       </div>
 

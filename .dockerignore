@@ -1,0 +1,33 @@
+# Git and local development
+.git
+.gitignore
+**/node_modules/
+**/build/
+**/coverage/
+
+# Environment secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# Logs and OS files
+**/*.log
+**/.DS_Store
+**/Thumbs.db
+
+# Terraform state and local configuration
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfvars
+**/*.tfvars.json
+
+# Private keys and certificates
+**/*.pem
+**/*.p12
+**/*.pfx
+**/*.key
+
+# Uploaded user content
+backend/uploads/*
+!backend/uploads/.gitkeep

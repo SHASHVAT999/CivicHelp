@@ -1,11 +1,11 @@
 # Backend Dockerfile
-FROM node:18-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
 COPY backend/package*.json ./
 
-RUN npm install --production
+RUN npm ci --omit=dev
 
 COPY backend/ .
 
